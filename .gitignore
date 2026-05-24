@@ -2,3 +2,4 @@ bin/
 *.db
 *.exe
 .DS_Store
+.codegraph
