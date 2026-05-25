@@ -17,6 +17,8 @@ Monólito Modular com **DDD Estratégico + CQRS** via Go Workspace. Cada bounded
 
 ```
 mundo-invest-pipefy/
+├── CONTEXT.md                       # domain glossary + bounded contexts
+├── AGENTS.md                        # AI agent instructions
 ├── go.work                          # workspace file
 ├── cmd/server/                      # composition root (entry point)
 ├── modules/
@@ -31,6 +33,9 @@ mundo-invest-pipefy/
 ├── pkg/
 │   ├── shared/                      # shared kernel (APIResponse, APIError)
 │   └── pipefy/                      # anti-corruption layer (GraphQL mutations)
+├── docs/
+│   ├── local-architecture.md        # diagrama Mermaid + fluxo de dados local
+│   └── aws-production-architecture.md # arquitetura AWS, trade-offs, capacidade
 ├── Dockerfile                       # multi-stage build
 ├── docker-compose.yml               # dev setup
 ├── lefthook.yml                     # pre-commit hooks
@@ -189,25 +194,10 @@ mutation($input: UpdateCardFieldInput!) {
 
 O envio é simulado — o card_id é logado no console. Em produção, bastaria trocar `SimulateSend` por uma chamada HTTP `POST https://api.pipefy.com/graphql` com `Authorization: Bearer <token>`.
 
-## Visão de Produção (AWS)
+## Documentação de Arquitetura
 
-Em ambiente produtivo, a arquitetura escalaria da seguinte forma:
-
-- **API Gateway + Lambda (Go):** Substitui o servidor Gin local. Cada endpoint vira uma função Lambda separada, com API Gateway roteando as requisições. Escala automaticamente com o volume de chamadas.
-- **DynamoDB:** Substitui SQLite. Tabela `clientes` com chave primária `email` + GSI por `status` para queries. Tabela `eventos_processados` com TTL para expurgo automático de eventos antigos. DynamoDB Streams pode disparar processamento adicional em tempo real.
-- **SQS + Lambda (Webhook):** O endpoint de webhook publica o evento em uma fila SQS; uma segunda Lambda consome a fila e processa (idempotência + regra de prioridade). Isso desacopla a ingestão do processamento e garante retry em caso de falha.
-- **Secrets Manager:** Token de autenticação do Pipefy armazenado como secret, injetado na Lambda via variável de ambiente.
-- **CloudWatch:** Logs estruturados de cada execução para tracing e alertas.
-
-### Diagrama de fluxo
-
-```
-POST /clientes → API Gateway → Lambda CriarCliente → DynamoDB
-                                                      ↓
-POST /webhooks  → API Gateway → Lambda Ingestão → SQS → Lambda Processar → DynamoDB
-                                                                           ↓
-                                                                  Envia updateCardField → Pipefy API
-```
+- [Arquitetura Local](docs/local-architecture.md) — diagrama Mermaid detalhando o fluxo de dados, camadas (domain, application, infrastructure) e interação entre os bounded contexts
+- [Arquitetura AWS](docs/aws-production-architecture.md) — justificativa de escolha de serviços (API Gateway, Lambda, DynamoDB, SQS) com base na documentação oficial da AWS, trade-offs, estimativa de capacidade por cenário, e custos mensais
 
 ## CI/CD
 
