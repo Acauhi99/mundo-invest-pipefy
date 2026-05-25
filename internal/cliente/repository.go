@@ -32,17 +32,8 @@ func (r *Repository) Migrate() error {
 
 func (r *Repository) Create(c *Cliente) error {
 	query := `INSERT INTO clientes (nome, email, tipo_solicitacao, valor_patrimonio, status, prioridade, card_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`
-	result, err := r.db.Exec(query, c.Nome, c.Email, c.TipoSolicitacao, c.ValorPatrimonio, c.Status, c.Prioridade, c.CardID)
-	if err != nil {
-		return err
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	c.ID = id
-	return nil
+		VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`
+	return r.db.QueryRow(query, c.Nome, c.Email, c.TipoSolicitacao, c.ValorPatrimonio, c.Status, c.Prioridade, c.CardID).Scan(&c.ID, &c.CreatedAt)
 }
 
 func (r *Repository) FindByEmail(email string) (*Cliente, error) {
@@ -62,5 +53,10 @@ func (r *Repository) FindByEmail(email string) (*Cliente, error) {
 func (r *Repository) UpdateStatusAndPriority(email, status, prioridade string) error {
 	query := `UPDATE clientes SET status = ?, prioridade = ?, updated_at = ? WHERE email = ?`
 	_, err := r.db.Exec(query, status, prioridade, time.Now(), email)
+	return err
+}
+
+func (r *Repository) UpdateCardID(email, cardID string) error {
+	_, err := r.db.Exec(`UPDATE clientes SET card_id = ? WHERE email = ?`, cardID, email)
 	return err
 }

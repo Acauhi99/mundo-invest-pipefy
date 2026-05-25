@@ -6,13 +6,23 @@ import (
 	"github.com/mundoinvest/client-management/internal/pipefy"
 )
 
-type Service struct {
-	repo         *Repository
-	pipefyClient *pipefy.Client
+type clientPersister interface {
+	Create(c *Cliente) error
+	UpdateCardID(email, cardID string) error
 }
 
-func NewService(repo *Repository, pipefyClient *pipefy.Client) *Service {
-	return &Service{repo: repo, pipefyClient: pipefyClient}
+type pipefyClient interface {
+	SimulateSend(payload map[string]interface{}) string
+	BuildCreateCardPayload(input pipefy.CreateCardInput) map[string]interface{}
+}
+
+type Service struct {
+	repo         clientPersister
+	pipefyClient pipefyClient
+}
+
+func NewService(repo clientPersister, pc pipefyClient) *Service {
+	return &Service{repo: repo, pipefyClient: pc}
 }
 
 func (s *Service) Criar(input CriarClienteInput) (*Cliente, error) {
@@ -25,11 +35,16 @@ func (s *Service) Criar(input CriarClienteInput) (*Cliente, error) {
 	}
 
 	if err := s.repo.Create(c); err != nil {
-		return nil, fmt.Errorf("erro ao persistir cliente: %w", err)
+		return nil, fmt.Errorf("failed to persist client: %w", err)
 	}
 
 	pipefyPayload := s.buildCreateCardPayload(c)
-	s.pipefyClient.SimulateSend(pipefyPayload)
+	cardID := s.pipefyClient.SimulateSend(pipefyPayload)
+
+	if err := s.repo.UpdateCardID(c.Email, cardID); err != nil {
+		return nil, fmt.Errorf("failed to update card_id: %w", err)
+	}
+	c.CardID = cardID
 
 	return c, nil
 }

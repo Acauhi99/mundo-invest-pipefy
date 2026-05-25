@@ -1,9 +1,12 @@
 package webhook
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/mundoinvest/client-management/internal/response"
 )
 
 type Handler struct {
@@ -17,14 +20,21 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) CardUpdated(c *gin.Context) {
 	var input CardUpdatedInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"erro": err.Error()})
+		c.JSON(http.StatusBadRequest, response.ValidationError())
 		return
 	}
 
 	if err := h.svc.ProcessarCardUpdated(input); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"erro": err.Error()})
+		switch {
+		case errors.Is(err, ErrEventAlreadyProcessed):
+			c.JSON(http.StatusConflict, response.ConflictError("EVENT_ALREADY_PROCESSED", "event already processed"))
+		case errors.Is(err, ErrClientNotFound):
+			c.JSON(http.StatusNotFound, response.NotFoundError("CLIENT_NOT_FOUND", "client not found"))
+		default:
+			c.JSON(http.StatusInternalServerError, response.InternalError())
+		}
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"mensagem": "evento processado com sucesso"})
+	c.JSON(http.StatusOK, response.Success(gin.H{"message": "event processed successfully"}))
 }

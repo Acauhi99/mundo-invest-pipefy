@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/mundoinvest/client-management/internal/response"
 )
 
 type Handler struct {
@@ -17,15 +19,15 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) Criar(c *gin.Context) {
 	var input CriarClienteInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"erro": err.Error()})
+		c.JSON(http.StatusBadRequest, response.ValidationError())
 		return
 	}
 
 	cliente, err := h.svc.Criar(input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"erro": err.Error()})
+		c.JSON(http.StatusInternalServerError, response.InternalError())
 		return
 	}
 
-	c.JSON(http.StatusCreated, cliente)
+	c.JSON(http.StatusCreated, response.Success(cliente))
 }

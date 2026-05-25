@@ -1,6 +1,9 @@
 package pipefy
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type Client struct{}
 
@@ -26,6 +29,9 @@ func (c *Client) BuildUpdateCardFieldPayload(input UpdateCardFieldInput) map[str
 	}
 }
 
-func (c *Client) SimulateSend(payload map[string]interface{}) {
+func (c *Client) SimulateSend(payload map[string]interface{}) string {
+	cardID := fmt.Sprintf("card_sim_%d", time.Now().UnixNano())
 	fmt.Printf("[Pipefy] Simulando envio GraphQL: %+v\n", payload)
+	fmt.Printf("[Pipefy] Card ID simulado: %s\n", cardID)
+	return cardID
 }

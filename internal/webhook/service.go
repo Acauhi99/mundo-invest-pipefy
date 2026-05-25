@@ -1,6 +1,8 @@
 package webhook
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/mundoinvest/client-management/internal/cliente"
@@ -13,32 +15,55 @@ const (
 	StatusProcessado = "Processado"
 )
 
-type Service struct {
-	eventRepo    *Repository
-	clienteRepo  *cliente.Repository
-	pipefyClient *pipefy.Client
+var (
+	ErrEventAlreadyProcessed = errors.New("event already processed")
+	ErrClientNotFound        = errors.New("client not found")
+)
+
+type eventTracker interface {
+	IsEventProcessed(eventID string) (bool, error)
+	MarkEventProcessed(eventID string) error
 }
 
-func NewService(eventRepo *Repository, clienteRepo *cliente.Repository, pipefyClient *pipefy.Client) *Service {
+type clientUpdater interface {
+	FindByEmail(email string) (*cliente.Cliente, error)
+	UpdateStatusAndPriority(email, status, prioridade string) error
+}
+
+type pipefyClient interface {
+	SimulateSend(payload map[string]interface{}) string
+	BuildUpdateCardFieldPayload(input pipefy.UpdateCardFieldInput) map[string]interface{}
+}
+
+type Service struct {
+	eventRepo    eventTracker
+	clienteRepo  clientUpdater
+	pipefyClient pipefyClient
+}
+
+func NewService(eventRepo eventTracker, clienteRepo clientUpdater, pc pipefyClient) *Service {
 	return &Service{
 		eventRepo:    eventRepo,
 		clienteRepo:  clienteRepo,
-		pipefyClient: pipefyClient,
+		pipefyClient: pc,
 	}
 }
 
 func (s *Service) ProcessarCardUpdated(input CardUpdatedInput) error {
 	alreadyProcessed, err := s.eventRepo.IsEventProcessed(input.EventID)
 	if err != nil {
-		return fmt.Errorf("erro ao verificar idempotência: %w", err)
+		return fmt.Errorf("failed to check idempotency: %w", err)
 	}
 	if alreadyProcessed {
-		return fmt.Errorf("evento %s já processado", input.EventID)
+		return fmt.Errorf("event %s: %w", input.EventID, ErrEventAlreadyProcessed)
 	}
 
 	c, err := s.clienteRepo.FindByEmail(input.ClienteEmail)
 	if err != nil {
-		return fmt.Errorf("cliente não encontrado para o email %s: %w", input.ClienteEmail, err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("client not found for email %s: %w", input.ClienteEmail, ErrClientNotFound)
+		}
+		return fmt.Errorf("failed to find client: %w", err)
 	}
 
 	prioridade := PriorityNormal
@@ -47,14 +72,14 @@ func (s *Service) ProcessarCardUpdated(input CardUpdatedInput) error {
 	}
 
 	if err := s.clienteRepo.UpdateStatusAndPriority(c.Email, StatusProcessado, prioridade); err != nil {
-		return fmt.Errorf("erro ao atualizar cliente: %w", err)
+		return fmt.Errorf("failed to update client: %w", err)
 	}
 
 	pipefyPayload := s.buildUpdateCardFieldPayload(input.CardID, prioridade)
 	s.pipefyClient.SimulateSend(pipefyPayload)
 
 	if err := s.eventRepo.MarkEventProcessed(input.EventID); err != nil {
-		return fmt.Errorf("erro ao marcar evento como processado: %w", err)
+		return fmt.Errorf("failed to mark event as processed: %w", err)
 	}
 
 	return nil
