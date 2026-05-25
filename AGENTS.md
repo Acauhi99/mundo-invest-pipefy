@@ -18,8 +18,10 @@ go build -buildvcs=false -o bin/server ./cmd/server
 # formato
 gofmt -w .
 
-# lint
-golangci-lint run ./...
+# lint (por módulo — go.work não suporta ./... direto da raiz)
+cd modules/cliente && golangci-lint run ./... && cd ../..
+cd modules/webhook && golangci-lint run ./... && cd ../..
+cd cmd/server && golangci-lint run ./...
 ```
 
 ## Estrutura do Projeto

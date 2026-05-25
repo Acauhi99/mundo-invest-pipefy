@@ -9,7 +9,7 @@ COPY modules/webhook/go.mod modules/webhook/go.sum* ./modules/webhook/
 COPY pkg/shared/go.mod pkg/shared/go.sum* ./pkg/shared/
 COPY pkg/pipefy/go.mod pkg/pipefy/go.sum* ./pkg/pipefy/
 
-RUN go work sync
+RUN go work sync && cd cmd/server && go mod download
 
 COPY . .
 

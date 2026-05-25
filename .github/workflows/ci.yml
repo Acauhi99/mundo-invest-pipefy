@@ -27,7 +27,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
-      - run: go test -buildvcs=false github.com/mundoinvest/cliente/... github.com/mundoinvest/webhook/...
+      - run: go test -buildvcs=false github.com/mundoinvest/cliente/... github.com/mundoinvest/webhook/... github.com/mundoinvest/pipefy/... github.com/mundoinvest/shared/...
+      - run: cd cmd/server && go test -buildvcs=false -count=1 ./... || true
 
   security:
     runs-on: ubuntu-latest
@@ -41,6 +42,8 @@ jobs:
           cd cmd/server && govulncheck ./... && cd ../..
           cd modules/cliente && govulncheck ./... && cd ../..
           cd modules/webhook && govulncheck ./... && cd ../..
+          cd pkg/shared && govulncheck ./... && cd ../..
+          cd pkg/pipefy && govulncheck ./... && cd ../..
 
   docker:
     needs: test

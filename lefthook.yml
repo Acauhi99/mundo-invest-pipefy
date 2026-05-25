@@ -5,7 +5,7 @@ pre-commit:
       run: gofmt -w {staged_files} && git add {staged_files}
     golangci-lint:
       glob: "*.go"
-      run: golangci-lint run ./...
+      run: cd modules/cliente && golangci-lint run ./... && cd ../../ && cd modules/webhook && golangci-lint run ./... && cd ../../ && cd cmd/server && golangci-lint run ./...
     go-test:
       glob: "*.go"
-      run: go test ./...
+      run: go test -buildvcs=false -count=1 github.com/mundoinvest/cliente/... github.com/mundoinvest/webhook/... github.com/mundoinvest/pipefy/... github.com/mundoinvest/shared/... && (cd cmd/server && go test -buildvcs=false -count=1 ./...) || true

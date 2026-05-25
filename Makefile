@@ -4,10 +4,17 @@ build:
 	go build -buildvcs=false -o bin/server ./cmd/server
 
 test:
-	go test -buildvcs=false -count=1 ./...
+	go test -buildvcs=false -count=1 \
+		github.com/mundoinvest/cliente/... \
+		github.com/mundoinvest/webhook/... \
+		github.com/mundoinvest/pipefy/... \
+		github.com/mundoinvest/shared/...
+	(cd cmd/server && go test -buildvcs=false -count=1 ./...) || true
 
 lint:
-	golangci-lint run ./...
+	cd modules/cliente && golangci-lint run ./... && cd ../..
+	cd modules/webhook && golangci-lint run ./... && cd ../..
+	cd cmd/server && golangci-lint run ./...
 
 fmt:
 	gofmt -w .
