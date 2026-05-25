@@ -26,7 +26,7 @@ clean:
 	rm -rf bin/ mundoinvest.db
 
 docker-build:
-	docker build -t mundoinvest/api:latest .
+	docker build -t acauhi/mundo-invest-pipefy:latest .
 
 docker-up:
 	docker compose up -d
