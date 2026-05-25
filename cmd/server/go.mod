@@ -1,4 +1,4 @@
-module github.com/mundoinvest/client-management
+module github.com/mundoinvest/server
 
 go 1.26.2
 

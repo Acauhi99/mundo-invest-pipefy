@@ -1,22 +1,26 @@
-package cliente
+package application_test
 
 import (
 	"errors"
 	"testing"
-	"time"
 
-	"github.com/mundoinvest/client-management/internal/pipefy"
+	clienteApp "github.com/mundoinvest/cliente/application"
+	"github.com/mundoinvest/cliente/domain"
+	"github.com/mundoinvest/pipefy"
 )
 
-type mockPersister struct {
-	createFn       func(c *Cliente) error
+type mockRepository struct {
+	createFn       func(c *domain.Cliente) error
 	updateCardIDFn func(email, cardID string) error
 }
 
-func (m *mockPersister) Create(c *Cliente) error { return m.createFn(c) }
-func (m *mockPersister) UpdateCardID(email, cardID string) error {
+func (m *mockRepository) Create(c *domain.Cliente) error                                 { return m.createFn(c) }
+func (m *mockRepository) FindByEmail(email string) (*domain.Cliente, error)              { return nil, nil }
+func (m *mockRepository) UpdateStatusAndPriority(email, status, prioridade string) error { return nil }
+func (m *mockRepository) UpdateCardID(email, cardID string) error {
 	return m.updateCardIDFn(email, cardID)
 }
+func (m *mockRepository) Migrate() error { return nil }
 
 type mockPipefy struct {
 	simulateSendFn           func(payload map[string]interface{}) string
@@ -29,12 +33,14 @@ func (m *mockPipefy) SimulateSend(payload map[string]interface{}) string {
 func (m *mockPipefy) BuildCreateCardPayload(input pipefy.CreateCardInput) map[string]interface{} {
 	return m.buildCreateCardPayloadFn(input)
 }
+func (m *mockPipefy) BuildUpdateCardFieldPayload(input pipefy.UpdateCardFieldInput) map[string]interface{} {
+	return map[string]interface{}{}
+}
 
 func TestCriar_Success(t *testing.T) {
-	persister := &mockPersister{
-		createFn: func(c *Cliente) error {
+	repo := &mockRepository{
+		createFn: func(c *domain.Cliente) error {
 			c.ID = 1
-			c.CreatedAt = time.Now()
 			return nil
 		},
 		updateCardIDFn: func(email, cardID string) error { return nil },
@@ -46,15 +52,15 @@ func TestCriar_Success(t *testing.T) {
 		},
 	}
 
-	svc := NewService(persister, pipefyMock)
-	input := CriarClienteInput{
+	handler := clienteApp.NewCriarClienteHandler(repo, pipefyMock)
+	input := clienteApp.CriarClienteInput{
 		Nome:            "João Silva",
 		Email:           "joao@example.com",
 		TipoSolicitacao: "Atualização cadastral",
 		ValorPatrimonio: 250000,
 	}
 
-	c, err := svc.Criar(input)
+	c, err := handler.Handle(input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -73,8 +79,8 @@ func TestCriar_Success(t *testing.T) {
 }
 
 func TestCriar_RepoError(t *testing.T) {
-	persister := &mockPersister{
-		createFn: func(c *Cliente) error {
+	repo := &mockRepository{
+		createFn: func(c *domain.Cliente) error {
 			return errors.New("db error")
 		},
 		updateCardIDFn: func(email, cardID string) error { return nil },
@@ -86,25 +92,24 @@ func TestCriar_RepoError(t *testing.T) {
 		},
 	}
 
-	svc := NewService(persister, pipefyMock)
-	input := CriarClienteInput{
+	handler := clienteApp.NewCriarClienteHandler(repo, pipefyMock)
+	input := clienteApp.CriarClienteInput{
 		Nome:            "João Silva",
 		Email:           "joao@example.com",
 		TipoSolicitacao: "Atualização cadastral",
 		ValorPatrimonio: 250000,
 	}
 
-	_, err := svc.Criar(input)
+	_, err := handler.Handle(input)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
 
 func TestCriar_UpdateCardIDError(t *testing.T) {
-	persister := &mockPersister{
-		createFn: func(c *Cliente) error {
+	repo := &mockRepository{
+		createFn: func(c *domain.Cliente) error {
 			c.ID = 1
-			c.CreatedAt = time.Now()
 			return nil
 		},
 		updateCardIDFn: func(email, cardID string) error {
@@ -118,15 +123,15 @@ func TestCriar_UpdateCardIDError(t *testing.T) {
 		},
 	}
 
-	svc := NewService(persister, pipefyMock)
-	input := CriarClienteInput{
+	handler := clienteApp.NewCriarClienteHandler(repo, pipefyMock)
+	input := clienteApp.CriarClienteInput{
 		Nome:            "João Silva",
 		Email:           "joao@example.com",
 		TipoSolicitacao: "Atualização cadastral",
 		ValorPatrimonio: 250000,
 	}
 
-	_, err := svc.Criar(input)
+	_, err := handler.Handle(input)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

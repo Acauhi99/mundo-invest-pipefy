@@ -7,9 +7,15 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 
-	"github.com/mundoinvest/client-management/internal/cliente"
-	"github.com/mundoinvest/client-management/internal/pipefy"
-	"github.com/mundoinvest/client-management/internal/webhook"
+	clienteApp "github.com/mundoinvest/cliente/application"
+	clienteHTTP "github.com/mundoinvest/cliente/infrastructure/http"
+	clientePersistence "github.com/mundoinvest/cliente/infrastructure/persistence"
+
+	webhookApp "github.com/mundoinvest/webhook/application"
+	webhookHTTP "github.com/mundoinvest/webhook/infrastructure/http"
+	webhookPersistence "github.com/mundoinvest/webhook/infrastructure/persistence"
+
+	"github.com/mundoinvest/pipefy"
 )
 
 func main() {
@@ -25,18 +31,25 @@ func main() {
 
 	pipefyClient := pipefy.NewClient()
 
-	clienteRepo := cliente.NewRepository(db)
-	webhookEventRepo := webhook.NewRepository(db)
+	clienteRepo := clientePersistence.NewSQLiteRepository(db)
+	webhookEventRepo := webhookPersistence.NewSQLiteEventRepository(db)
 
-	clienteSvc := cliente.NewService(clienteRepo, pipefyClient)
-	webhookSvc := webhook.NewService(webhookEventRepo, clienteRepo, pipefyClient)
+	criarClienteHandler := clienteApp.NewCriarClienteHandler(clienteRepo, pipefyClient)
+	obterClienteHandler := clienteApp.NewObterClientePorEmailHandler(clienteRepo)
 
-	clienteHandler := cliente.NewHandler(clienteSvc)
-	webhookHandler := webhook.NewHandler(webhookSvc)
+	processarCardHandler := webhookApp.NewProcessarCardUpdatedHandler(
+		webhookEventRepo,
+		obterClienteHandler,
+		clienteRepo,
+		pipefyClient,
+	)
+
+	clienteHTTPHandler := clienteHTTP.NewHandler(criarClienteHandler)
+	webhookHTTPHandler := webhookHTTP.NewHandler(processarCardHandler)
 
 	r := gin.Default()
-	r.POST("/clientes", clienteHandler.Criar)
-	r.POST("/webhooks/pipefy/card-updated", webhookHandler.CardUpdated)
+	r.POST("/clientes", clienteHTTPHandler.Criar)
+	r.POST("/webhooks/pipefy/card-updated", webhookHTTPHandler.CardUpdated)
 
 	log.Println("server started on :8080")
 	if err := r.Run(":8080"); err != nil {
@@ -45,12 +58,12 @@ func main() {
 }
 
 func runMigrations(db *sql.DB) error {
-	clienteRepo := cliente.NewRepository(db)
+	clienteRepo := clientePersistence.NewSQLiteRepository(db)
 	if err := clienteRepo.Migrate(); err != nil {
 		return err
 	}
 
-	webhookRepo := webhook.NewRepository(db)
+	webhookRepo := webhookPersistence.NewSQLiteEventRepository(db)
 	if err := webhookRepo.Migrate(); err != nil {
 		return err
 	}

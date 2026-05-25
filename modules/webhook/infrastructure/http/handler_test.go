@@ -1,4 +1,4 @@
-package webhook_test
+package http_test
 
 import (
 	"bytes"
@@ -11,10 +11,14 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 
-	"github.com/mundoinvest/client-management/internal/cliente"
-	"github.com/mundoinvest/client-management/internal/pipefy"
-	"github.com/mundoinvest/client-management/internal/response"
-	"github.com/mundoinvest/client-management/internal/webhook"
+	clienteApp "github.com/mundoinvest/cliente/application"
+	"github.com/mundoinvest/cliente/domain"
+	clientePersistence "github.com/mundoinvest/cliente/infrastructure/persistence"
+	"github.com/mundoinvest/pipefy"
+	"github.com/mundoinvest/shared"
+	webhookApp "github.com/mundoinvest/webhook/application"
+	webhookHTTP "github.com/mundoinvest/webhook/infrastructure/http"
+	webhookPersistence "github.com/mundoinvest/webhook/infrastructure/persistence"
 )
 
 func setupWebhookTestDB(t *testing.T) *sql.DB {
@@ -23,11 +27,11 @@ func setupWebhookTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("failed to open in-memory database: %v", err)
 	}
-	clienteRepo := cliente.NewRepository(db)
+	clienteRepo := clientePersistence.NewSQLiteRepository(db)
 	if err := clienteRepo.Migrate(); err != nil {
 		t.Fatalf("failed to migrate clientes: %v", err)
 	}
-	webhookRepo := webhook.NewRepository(db)
+	webhookRepo := webhookPersistence.NewSQLiteEventRepository(db)
 	if err := webhookRepo.Migrate(); err != nil {
 		t.Fatalf("failed to migrate webhooks: %v", err)
 	}
@@ -37,18 +41,20 @@ func setupWebhookTestDB(t *testing.T) *sql.DB {
 func setupWebhookRouter(db *sql.DB) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	clienteRepo := cliente.NewRepository(db)
-	webhookEventRepo := webhook.NewRepository(db)
+	clienteRepo := clientePersistence.NewSQLiteRepository(db)
+	webhookEventRepo := webhookPersistence.NewSQLiteEventRepository(db)
 	pipefyClient := pipefy.NewClient()
-	svc := webhook.NewService(webhookEventRepo, clienteRepo, pipefyClient)
-	handler := webhook.NewHandler(svc)
-	r.POST("/webhooks/pipefy/card-updated", handler.CardUpdated)
+
+	clienteQry := clienteApp.NewObterClientePorEmailHandler(clienteRepo)
+	handler := webhookApp.NewProcessarCardUpdatedHandler(webhookEventRepo, clienteQry, clienteRepo, pipefyClient)
+	httpHandler := webhookHTTP.NewHandler(handler)
+	r.POST("/webhooks/pipefy/card-updated", httpHandler.CardUpdated)
 	return r
 }
 
 func criarClienteParaTeste(db *sql.DB, nome, email string, patrimonio float64) {
-	repo := cliente.NewRepository(db)
-	c := &cliente.Cliente{
+	repo := clientePersistence.NewSQLiteRepository(db)
+	c := &domain.Cliente{
 		Nome:            nome,
 		Email:           email,
 		TipoSolicitacao: "Atualização cadastral",
@@ -96,7 +102,7 @@ func TestWebhook_PatrimonioAlto_PrioridadeAlta(t *testing.T) {
 		t.Fatalf("expected success, got error: %+v", apiResp)
 	}
 
-	clienteRepo := cliente.NewRepository(db)
+	clienteRepo := clientePersistence.NewSQLiteRepository(db)
 	c, err := clienteRepo.FindByEmail("joao.silva@example.com")
 	if err != nil {
 		t.Fatalf("failed to find client: %v", err)
@@ -145,7 +151,7 @@ func TestWebhook_PatrimonioBaixo_PrioridadeNormal(t *testing.T) {
 		t.Fatalf("expected success, got error: %+v", apiResp)
 	}
 
-	clienteRepo := cliente.NewRepository(db)
+	clienteRepo := clientePersistence.NewSQLiteRepository(db)
 	c, err := clienteRepo.FindByEmail("maria.souza@example.com")
 	if err != nil {
 		t.Fatalf("failed to find client: %v", err)
@@ -189,8 +195,8 @@ func TestWebhook_EventoDuplicado_Bloqueado(t *testing.T) {
 	}
 
 	var apiResp struct {
-		Success bool              `json:"success"`
-		Error   response.APIError `json:"error"`
+		Success bool             `json:"success"`
+		Error   *shared.APIError `json:"error"`
 	}
 	if err := json.Unmarshal(w2.Body.Bytes(), &apiResp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -228,8 +234,8 @@ func TestWebhook_ClienteNaoEncontrado(t *testing.T) {
 	}
 
 	var apiResp struct {
-		Success bool              `json:"success"`
-		Error   response.APIError `json:"error"`
+		Success bool             `json:"success"`
+		Error   *shared.APIError `json:"error"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -278,7 +284,7 @@ func TestWebhook_PatrimonioExatamente200k_PrioridadeAlta(t *testing.T) {
 		t.Fatalf("expected success, got error: %+v", apiResp)
 	}
 
-	clienteRepo := cliente.NewRepository(db)
+	clienteRepo := clientePersistence.NewSQLiteRepository(db)
 	c, err := clienteRepo.FindByEmail("carlos.silva@example.com")
 	if err != nil {
 		t.Fatalf("failed to find client: %v", err)

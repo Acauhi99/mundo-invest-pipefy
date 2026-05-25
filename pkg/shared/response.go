@@ -1,4 +1,4 @@
-package response
+package shared
 
 type APIResponse struct {
 	Success bool      `json:"success"`

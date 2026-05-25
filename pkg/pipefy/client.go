@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+type PipefyClient interface {
+	SimulateSend(payload map[string]interface{}) string
+	BuildCreateCardPayload(input CreateCardInput) map[string]interface{}
+	BuildUpdateCardFieldPayload(input UpdateCardFieldInput) map[string]interface{}
+}
+
 type Client struct{}
 
 func NewClient() *Client {
@@ -31,7 +37,6 @@ func (c *Client) BuildUpdateCardFieldPayload(input UpdateCardFieldInput) map[str
 
 func (c *Client) SimulateSend(payload map[string]interface{}) string {
 	cardID := fmt.Sprintf("card_sim_%d", time.Now().UnixNano())
-	fmt.Printf("[Pipefy] Simulando envio GraphQL: %+v\n", payload)
 	fmt.Printf("[Pipefy] Card ID simulado: %s\n", cardID)
 	return cardID
 }

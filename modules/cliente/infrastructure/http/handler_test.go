@@ -1,4 +1,4 @@
-package cliente_test
+package http_test
 
 import (
 	"bytes"
@@ -11,9 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 
-	"github.com/mundoinvest/client-management/internal/cliente"
-	"github.com/mundoinvest/client-management/internal/pipefy"
-	"github.com/mundoinvest/client-management/internal/response"
+	clienteApp "github.com/mundoinvest/cliente/application"
+	"github.com/mundoinvest/cliente/domain"
+	clienteHTTP "github.com/mundoinvest/cliente/infrastructure/http"
+	clientePersistence "github.com/mundoinvest/cliente/infrastructure/persistence"
+	"github.com/mundoinvest/pipefy"
+	"github.com/mundoinvest/shared"
 )
 
 func setupClienteTestDB(t *testing.T) *sql.DB {
@@ -22,7 +25,7 @@ func setupClienteTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("failed to open in-memory database: %v", err)
 	}
-	repo := cliente.NewRepository(db)
+	repo := clientePersistence.NewSQLiteRepository(db)
 	if err := repo.Migrate(); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
@@ -32,10 +35,10 @@ func setupClienteTestDB(t *testing.T) *sql.DB {
 func setupClienteRouter(db *sql.DB) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	repo := cliente.NewRepository(db)
+	repo := clientePersistence.NewSQLiteRepository(db)
 	pipefyClient := pipefy.NewClient()
-	svc := cliente.NewService(repo, pipefyClient)
-	handler := cliente.NewHandler(svc)
+	cmdHandler := clienteApp.NewCriarClienteHandler(repo, pipefyClient)
+	handler := clienteHTTP.NewHandler(cmdHandler)
 	r.POST("/clientes", handler.Criar)
 	return r
 }
@@ -64,9 +67,9 @@ func TestCriarCliente_Sucesso(t *testing.T) {
 	}
 
 	var apiResp struct {
-		Success bool               `json:"success"`
-		Data    cliente.Cliente    `json:"data"`
-		Error   *response.APIError `json:"error"`
+		Success bool             `json:"success"`
+		Data    domain.Cliente   `json:"data"`
+		Error   *shared.APIError `json:"error"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -95,7 +98,7 @@ func TestCriarCliente_Sucesso(t *testing.T) {
 		t.Error("expected card_id set")
 	}
 
-	repo := cliente.NewRepository(db)
+	repo := clientePersistence.NewSQLiteRepository(db)
 	saved, err := repo.FindByEmail("joao.silva@example.com")
 	if err != nil {
 		t.Fatalf("failed to find client in database: %v", err)
@@ -129,8 +132,8 @@ func TestCriarCliente_EmailInvalido(t *testing.T) {
 	}
 
 	var apiResp struct {
-		Success bool              `json:"success"`
-		Error   response.APIError `json:"error"`
+		Success bool            `json:"success"`
+		Error   shared.APIError `json:"error"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -164,8 +167,8 @@ func TestCriarCliente_CamposObrigatoriosAusentes(t *testing.T) {
 	}
 
 	var apiResp struct {
-		Success bool              `json:"success"`
-		Error   response.APIError `json:"error"`
+		Success bool            `json:"success"`
+		Error   shared.APIError `json:"error"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -202,8 +205,8 @@ func TestCriarCliente_ValorPatrimonioInvalido(t *testing.T) {
 	}
 
 	var apiResp struct {
-		Success bool              `json:"success"`
-		Error   response.APIError `json:"error"`
+		Success bool            `json:"success"`
+		Error   shared.APIError `json:"error"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
