@@ -13,6 +13,7 @@ import (
 
 	"github.com/mundoinvest/client-management/internal/cliente"
 	"github.com/mundoinvest/client-management/internal/pipefy"
+	"github.com/mundoinvest/client-management/internal/response"
 	"github.com/mundoinvest/client-management/internal/webhook"
 )
 
@@ -20,15 +21,15 @@ func setupWebhookTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
-		t.Fatalf("erro ao abrir banco em memória: %v", err)
+		t.Fatalf("failed to open in-memory database: %v", err)
 	}
 	clienteRepo := cliente.NewRepository(db)
 	if err := clienteRepo.Migrate(); err != nil {
-		t.Fatalf("erro ao migrar clientes: %v", err)
+		t.Fatalf("failed to migrate clientes: %v", err)
 	}
 	webhookRepo := webhook.NewRepository(db)
 	if err := webhookRepo.Migrate(); err != nil {
-		t.Fatalf("erro ao migrar webhooks: %v", err)
+		t.Fatalf("failed to migrate webhooks: %v", err)
 	}
 	return db
 }
@@ -81,19 +82,30 @@ func TestWebhook_PatrimonioAlto_PrioridadeAlta(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("esperado status %d, recebido %d: %s", http.StatusOK, w.Code, w.Body.String())
+		t.Errorf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var apiResp struct {
+		Success bool              `json:"success"`
+		Data    map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !apiResp.Success {
+		t.Fatalf("expected success, got error: %+v", apiResp)
 	}
 
 	clienteRepo := cliente.NewRepository(db)
 	c, err := clienteRepo.FindByEmail("joao.silva@example.com")
 	if err != nil {
-		t.Fatalf("erro ao buscar cliente: %v", err)
+		t.Fatalf("failed to find client: %v", err)
 	}
 	if c.Status != "Processado" {
-		t.Errorf("esperado status 'Processado', recebido '%s'", c.Status)
+		t.Errorf("expected status 'Processado', got '%s'", c.Status)
 	}
 	if c.Prioridade != "prioridade_alta" {
-		t.Errorf("esperado prioridade 'prioridade_alta', recebido '%s'", c.Prioridade)
+		t.Errorf("expected priority 'prioridade_alta', got '%s'", c.Prioridade)
 	}
 }
 
@@ -119,16 +131,27 @@ func TestWebhook_PatrimonioBaixo_PrioridadeNormal(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("esperado status %d, recebido %d: %s", http.StatusOK, w.Code, w.Body.String())
+		t.Errorf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var apiResp struct {
+		Success bool              `json:"success"`
+		Data    map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !apiResp.Success {
+		t.Fatalf("expected success, got error: %+v", apiResp)
 	}
 
 	clienteRepo := cliente.NewRepository(db)
 	c, err := clienteRepo.FindByEmail("maria.souza@example.com")
 	if err != nil {
-		t.Fatalf("erro ao buscar cliente: %v", err)
+		t.Fatalf("failed to find client: %v", err)
 	}
 	if c.Prioridade != "prioridade_normal" {
-		t.Errorf("esperado prioridade 'prioridade_normal', recebido '%s'", c.Prioridade)
+		t.Errorf("expected priority 'prioridade_normal', got '%s'", c.Prioridade)
 	}
 }
 
@@ -153,7 +176,7 @@ func TestWebhook_EventoDuplicado_Bloqueado(t *testing.T) {
 	router.ServeHTTP(w1, req1)
 
 	if w1.Code != http.StatusOK {
-		t.Fatalf("primeira requisição esperada %d, recebida %d: %s", http.StatusOK, w1.Code, w1.Body.String())
+		t.Fatalf("first request expected %d, got %d: %s", http.StatusOK, w1.Code, w1.Body.String())
 	}
 
 	req2 := httptest.NewRequest(http.MethodPost, "/webhooks/pipefy/card-updated", bytes.NewReader(body))
@@ -162,6 +185,105 @@ func TestWebhook_EventoDuplicado_Bloqueado(t *testing.T) {
 	router.ServeHTTP(w2, req2)
 
 	if w2.Code != http.StatusConflict {
-		t.Errorf("esperado status %d para evento duplicado, recebido %d: %s", http.StatusConflict, w2.Code, w2.Body.String())
+		t.Errorf("expected status %d for duplicate event, got %d: %s", http.StatusConflict, w2.Code, w2.Body.String())
+	}
+
+	var apiResp struct {
+		Success bool              `json:"success"`
+		Error   response.APIError `json:"error"`
+	}
+	if err := json.Unmarshal(w2.Body.Bytes(), &apiResp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if apiResp.Success {
+		t.Error("expected failure for duplicate event")
+	}
+	if apiResp.Error.Code != "EVENT_ALREADY_PROCESSED" {
+		t.Errorf("expected code EVENT_ALREADY_PROCESSED, got '%s'", apiResp.Error.Code)
+	}
+}
+
+func TestWebhook_ClienteNaoEncontrado(t *testing.T) {
+	db := setupWebhookTestDB(t)
+	defer db.Close()
+
+	router := setupWebhookRouter(db)
+
+	payload := map[string]interface{}{
+		"event_id":      "evt_004",
+		"card_id":       "card_999",
+		"cliente_email": "inexistente@example.com",
+		"timestamp":     "2026-05-18T12:00:00Z",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/pipefy/card-updated", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status %d for missing client, got %d: %s", http.StatusNotFound, w.Code, w.Body.String())
+	}
+
+	var apiResp struct {
+		Success bool              `json:"success"`
+		Error   response.APIError `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if apiResp.Success {
+		t.Error("expected failure for missing client")
+	}
+	if apiResp.Error.Code != "CLIENT_NOT_FOUND" {
+		t.Errorf("expected code CLIENT_NOT_FOUND, got '%s'", apiResp.Error.Code)
+	}
+}
+
+func TestWebhook_PatrimonioExatamente200k_PrioridadeAlta(t *testing.T) {
+	db := setupWebhookTestDB(t)
+	defer db.Close()
+	criarClienteParaTeste(db, "Carlos Silva", "carlos.silva@example.com", 200000)
+
+	router := setupWebhookRouter(db)
+
+	payload := map[string]interface{}{
+		"event_id":      "evt_005",
+		"card_id":       "card_200k",
+		"cliente_email": "carlos.silva@example.com",
+		"timestamp":     "2026-05-18T12:00:00Z",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/pipefy/card-updated", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var apiResp struct {
+		Success bool              `json:"success"`
+		Data    map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !apiResp.Success {
+		t.Fatalf("expected success, got error: %+v", apiResp)
+	}
+
+	clienteRepo := cliente.NewRepository(db)
+	c, err := clienteRepo.FindByEmail("carlos.silva@example.com")
+	if err != nil {
+		t.Fatalf("failed to find client: %v", err)
+	}
+	if c.Prioridade != "prioridade_alta" {
+		t.Errorf("expected priority 'prioridade_alta' for patrimonio=200000, got '%s'", c.Prioridade)
 	}
 }
