@@ -11,18 +11,62 @@ API de gerenciamento de clientes com mapeamento de cards para o Pipefy, desenvol
 | Banco | SQLite via [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) (Go puro, zero CGO) |
 | Testes | `testing` + `httptest` + `gin.TestMode` |
 
+## Arquitetura
+
+Monólito Modular com **DDD Estratégico + CQRS** via Go Workspace. Cada bounded context é um módulo Go separado, deployável isoladamente.
+
+```
+mundo-invest-pipefy/
+├── go.work                          # workspace file
+├── cmd/server/                      # composition root (entry point)
+├── modules/
+│   ├── cliente/                     # bounded context: Cliente
+│   │   ├── domain/                  # aggregate root, domain events, errors
+│   │   ├── application/             # commands (CriarCliente) + queries (ObterClientePorEmail)
+│   │   └── infrastructure/          # persistence (SQLite), HTTP handlers
+│   └── webhook/                     # bounded context: Webhook
+│       ├── domain/                  # ProcessedEvent, CardUpdatedInput, errors
+│       ├── application/             # commands (ProcessarCardUpdated)
+│       └── infrastructure/          # persistence (SQLite), HTTP handlers
+├── pkg/
+│   ├── shared/                      # shared kernel (APIResponse, APIError)
+│   └── pipefy/                      # anti-corruption layer (GraphQL mutations)
+├── Dockerfile                       # multi-stage build
+├── docker-compose.yml               # dev setup
+├── lefthook.yml                     # pre-commit hooks
+├── .github/workflows/ci.yml         # CI/CD pipeline
+└── Makefile
+```
+
+**Princípios:**
+- **DDD Estratégico:** Bounded contexts `cliente` e `webhook` com modelos de domínio próprios
+- **CQRS:** Separação de Commands (mutações) e Queries (leituras) na camada de application
+- **Port/Adapter:** Application define interfaces (ports), infrastructure implementa (adapters)
+- **Domain Events:** `ClienteCriado`, `ClienteProcessado` — preparados para evolução para mensageria (SQS/SNS)
+- **Anti-Corruption Layer:** `pkg/pipefy/` isola as mutations GraphQL do domínio
+
 ## Execução Local
 
 ```bash
 # build
-go build -buildvcs=false -o server ./cmd/server
+go build -buildvcs=false -o bin/server ./cmd/server
 
 # rodar servidor
-./server
+./bin/server
 # Server started on :8080
 
 # rodar testes
-go test -buildvcs=false -v ./...
+go test -count=1 ./cmd/server/... ./modules/... ./pkg/...
+
+# docker
+make docker-up
+make docker-down
+
+# lint
+golangci-lint run ./...
+
+# format
+gofmt -w .
 ```
 
 ## Exemplos de Requisição
@@ -89,6 +133,7 @@ curl -X POST http://localhost:8080/webhooks/pipefy/card-updated \
     "message": "event already processed"
   }
 }
+```
 
 **Cliente não encontrado (404):**
 ```json
@@ -99,6 +144,7 @@ curl -X POST http://localhost:8080/webhooks/pipefy/card-updated \
     "message": "client not found"
   }
 }
+```
 
 **Payload inválido (400):**
 ```json
@@ -120,7 +166,7 @@ curl -X POST http://localhost:8080/webhooks/pipefy/card-updated \
 
 ## Mapeamento Pipefy (GraphQL)
 
-O pacote `internal/pipefy/` contém as mutations seguindo a [documentação oficial](https://developers.pipefy.com/reference):
+O pacote `pkg/pipefy/` contém as mutations seguindo a [documentação oficial](https://developers.pipefy.com/reference):
 
 ### createCard ([docs](https://developers.pipefy.com/reference/cards#card-mutations))
 ```graphql
@@ -141,7 +187,7 @@ mutation($input: UpdateCardFieldInput!) {
 }
 ```
 
-O envio é simulado — o payload é logado no console. Em produção, bastaria trocar `SimulateSend` por uma chamada HTTP `POST https://api.pipefy.com/graphql`.
+O envio é simulado — o card_id é logado no console. Em produção, bastaria trocar `SimulateSend` por uma chamada HTTP `POST https://api.pipefy.com/graphql` com `Authorization: Bearer <token>`.
 
 ## Visão de Produção (AWS)
 
@@ -161,4 +207,17 @@ POST /clientes → API Gateway → Lambda CriarCliente → DynamoDB
 POST /webhooks  → API Gateway → Lambda Ingestão → SQS → Lambda Processar → DynamoDB
                                                                            ↓
                                                                   Envia updateCardField → Pipefy API
+```
+
+## CI/CD
+
+Pipeline no GitHub Actions: lint → test → security scan → docker build + push → deploy fake.
+
+## Git Hooks
+
+Lefthook configurado com pre-commit: `gofmt` + `golangci-lint` + `go test`. Instalar com:
+
+```bash
+go install github.com/evilmartians/lefthook@latest
+lefthook install
 ```
