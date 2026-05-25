@@ -55,7 +55,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: mundoinvest/api:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/api:latest
 
   deploy-fake:
     needs: docker
