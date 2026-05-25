@@ -15,12 +15,12 @@ import (
 func main() {
 	db, err := sql.Open("sqlite", "file:mundoinvest.db?_journal_mode=WAL")
 	if err != nil {
-		log.Fatalf("erro ao abrir banco: %v", err)
+		log.Fatalf("failed to open database: %v", err)
 	}
 	defer db.Close()
 
 	if err := runMigrations(db); err != nil {
-		log.Fatalf("erro ao executar migrations: %v", err)
+		log.Fatalf("failed to run migrations: %v", err)
 	}
 
 	pipefyClient := pipefy.NewClient()
@@ -38,9 +38,9 @@ func main() {
 	r.POST("/clientes", clienteHandler.Criar)
 	r.POST("/webhooks/pipefy/card-updated", webhookHandler.CardUpdated)
 
-	log.Println("servidor iniciado em :8080")
+	log.Println("server started on :8080")
 	if err := r.Run(":8080"); err != nil {
-		log.Fatalf("erro ao iniciar servidor: %v", err)
+		log.Fatalf("failed to start server: %v", err)
 	}
 }
 

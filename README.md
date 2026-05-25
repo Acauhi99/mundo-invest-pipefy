@@ -2,36 +2,11 @@
 
 API de gerenciamento de clientes com mapeamento de cards para o Pipefy, desenvolvida como teste técnico para backend.
 
-## Estrutura do Projeto (DDD Estratégico)
-
-```
-├── cmd/server/main.go          # entrypoint: Gin router, DI, migrations
-├── internal/
-│   ├── cliente/                # Contexto: Gestão de Clientes
-│   │   ├── handler.go          # POST /clientes
-│   │   ├── service.go          # validação, persistência, mapeamento Pipefy
-│   │   ├── repository.go       # SQLite CRUD (clientes)
-│   │   ├── model.go            # Cliente, CriarClienteInput
-│   │   └── handler_test.go     # teste integração: criação + persistência
-│   ├── webhook/                # Contexto: Processamento de Webhooks
-│   │   ├── handler.go          # POST /webhooks/pipefy/card-updated
-│   │   ├── service.go          # idempotência, regra de prioridade, Pipefy
-│   │   ├── repository.go       # SQLite (eventos_processados)
-│   │   ├── model.go            # CardUpdatedInput, ProcessedEvent
-│   │   └── handler_test.go     # testes: prioridade, evento duplicado
-│   └── pipefy/                 # Contexto: Integração Pipefy
-│       ├── client.go           # Cliente Pipefy (simulado)
-│       ├── mutations.go        # GraphQL: createCard, updateCardField
-│       └── models.go           # DTOs Pipefy (CreateCardInput, etc)
-├── go.mod
-└── README.md
-```
-
 ## Stack
 
 | Camada | Tecnologia |
 |--------|-----------|
-| Linguagem | Go 1.24 |
+| Linguagem | Go 1.26 |
 | HTTP | [Gin](https://github.com/gin-gonic/gin) |
 | Banco | SQLite via [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) (Go puro, zero CGO) |
 | Testes | `testing` + `httptest` + `gin.TestMode` |
@@ -44,7 +19,7 @@ go build -buildvcs=false -o server ./cmd/server
 
 # rodar servidor
 ./server
-# Servidor iniciado em :8080
+# Server started on :8080
 
 # rodar testes
 go test -buildvcs=false -v ./...
@@ -68,13 +43,17 @@ curl -X POST http://localhost:8080/clientes \
 **Resposta (201):**
 ```json
 {
-  "id": 1,
-  "cliente_nome": "João Silva",
-  "cliente_email": "joao.silva@example.com",
-  "tipo_solicitacao": "Atualização cadastral",
-  "valor_patrimonio": 250000,
-  "status": "Aguardando Análise",
-  "created_at": "2026-05-24T18:00:00Z"
+  "success": true,
+  "data": {
+    "id": 1,
+    "cliente_nome": "João Silva",
+    "cliente_email": "joao.silva@example.com",
+    "tipo_solicitacao": "Atualização cadastral",
+    "valor_patrimonio": 250000,
+    "status": "Aguardando Análise",
+    "card_id": "card_sim_...",
+    "created_at": "2026-05-24T18:00:00Z"
+  }
 }
 ```
 
@@ -94,14 +73,41 @@ curl -X POST http://localhost:8080/webhooks/pipefy/card-updated \
 **Resposta (200):**
 ```json
 {
-  "mensagem": "evento processado com sucesso"
+  "success": true,
+  "data": {
+    "message": "event processed successfully"
+  }
 }
 ```
 
 **Evento duplicado (409):**
 ```json
 {
-  "erro": "evento evt_123 já processado"
+  "success": false,
+  "error": {
+    "code": "EVENT_ALREADY_PROCESSED",
+    "message": "event already processed"
+  }
+}
+
+**Cliente não encontrado (404):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CLIENT_NOT_FOUND",
+    "message": "client not found"
+  }
+}
+
+**Payload inválido (400):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "invalid request body"
+  }
 }
 ```
 
