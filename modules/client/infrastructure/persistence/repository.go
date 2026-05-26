@@ -3,6 +3,7 @@ package persistence
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/mundoinvest/client/domain"
@@ -36,7 +37,13 @@ func (r *SQLiteRepository) Migrate() error {
 func (r *SQLiteRepository) Create(c *domain.Client) error {
 	query := `INSERT INTO clients (name, email, request_type, net_worth, status, priority, card_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, created_at`
-	return r.db.QueryRow(query, c.Name, c.Email, c.RequestType, c.NetWorth, c.Status, c.Priority, c.CardID).Scan(&c.ID, &c.CreatedAt)
+	if err := r.db.QueryRow(query, c.Name, c.Email, c.RequestType, c.NetWorth, c.Status, c.Priority, c.CardID).Scan(&c.ID, &c.CreatedAt); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return domain.ErrEmailAlreadyExists
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *SQLiteRepository) FindByEmail(email string) (*domain.Client, error) {

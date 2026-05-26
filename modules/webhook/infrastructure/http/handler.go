@@ -23,7 +23,7 @@ func NewHandler(processCmd *application.ProcessCardUpdatedHandler) *Handler {
 func (h *Handler) CardUpdated(c *gin.Context) {
 	var input domain.CardUpdatedInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, shared.ValidationError())
+		c.JSON(http.StatusBadRequest, shared.ValidationError(err.Error()))
 		return
 	}
 
@@ -34,7 +34,7 @@ func (h *Handler) CardUpdated(c *gin.Context) {
 		case errors.Is(err, clientDomain.ErrClientNotFound):
 			c.JSON(http.StatusNotFound, shared.NotFoundError("CLIENT_NOT_FOUND", "client not found"))
 		default:
-			c.JSON(http.StatusInternalServerError, shared.InternalError())
+			c.JSON(http.StatusInternalServerError, shared.InternalError("failed to process event"))
 		}
 		return
 	}

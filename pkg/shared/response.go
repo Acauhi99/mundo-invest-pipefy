@@ -15,10 +15,10 @@ func Success(data any) APIResponse {
 	return APIResponse{Success: true, Data: data}
 }
 
-func ValidationError() APIResponse {
+func ValidationError(message string) APIResponse {
 	return APIResponse{
 		Success: false,
-		Error:   &APIError{Code: "VALIDATION_ERROR", Message: "invalid request body"},
+		Error:   &APIError{Code: "VALIDATION_ERROR", Message: message},
 	}
 }
 
@@ -36,9 +36,9 @@ func ConflictError(code, message string) APIResponse {
 	}
 }
 
-func InternalError() APIResponse {
+func InternalError(message string) APIResponse {
 	return APIResponse{
 		Success: false,
-		Error:   &APIError{Code: "INTERNAL_ERROR", Message: "internal server error"},
+		Error:   &APIError{Code: "INTERNAL_ERROR", Message: message},
 	}
 }
