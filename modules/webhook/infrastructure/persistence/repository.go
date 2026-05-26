@@ -11,7 +11,7 @@ func NewSQLiteEventRepository(db *sql.DB) *SQLiteEventRepository {
 }
 
 func (r *SQLiteEventRepository) Migrate() error {
-	query := `CREATE TABLE IF NOT EXISTS eventos_processados (
+	query := `CREATE TABLE IF NOT EXISTS processed_events (
 		event_id TEXT PRIMARY KEY,
 		processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`
@@ -21,7 +21,7 @@ func (r *SQLiteEventRepository) Migrate() error {
 
 func (r *SQLiteEventRepository) IsEventProcessed(eventID string) (bool, error) {
 	var count int
-	err := r.db.QueryRow(`SELECT COUNT(*) FROM eventos_processados WHERE event_id = ?`, eventID).Scan(&count)
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM processed_events WHERE event_id = ?`, eventID).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -29,6 +29,6 @@ func (r *SQLiteEventRepository) IsEventProcessed(eventID string) (bool, error) {
 }
 
 func (r *SQLiteEventRepository) MarkEventProcessed(eventID string) error {
-	_, err := r.db.Exec(`INSERT INTO eventos_processados (event_id) VALUES (?)`, eventID)
+	_, err := r.db.Exec(`INSERT INTO processed_events (event_id) VALUES (?)`, eventID)
 	return err
 }

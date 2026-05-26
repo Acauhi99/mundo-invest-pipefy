@@ -11,9 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 
-	clienteApp "github.com/mundoinvest/cliente/application"
-	"github.com/mundoinvest/cliente/domain"
-	clientePersistence "github.com/mundoinvest/cliente/infrastructure/persistence"
+	clientApp "github.com/mundoinvest/client/application"
+	"github.com/mundoinvest/client/domain"
+	clientPersistence "github.com/mundoinvest/client/infrastructure/persistence"
 	"github.com/mundoinvest/pipefy"
 	"github.com/mundoinvest/shared"
 	webhookApp "github.com/mundoinvest/webhook/application"
@@ -27,9 +27,9 @@ func setupWebhookTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("failed to open in-memory database: %v", err)
 	}
-	clienteRepo := clientePersistence.NewSQLiteRepository(db)
-	if err := clienteRepo.Migrate(); err != nil {
-		t.Fatalf("failed to migrate clientes: %v", err)
+	clientRepo := clientPersistence.NewSQLiteRepository(db)
+	if err := clientRepo.Migrate(); err != nil {
+		t.Fatalf("failed to migrate clients: %v", err)
 	}
 	webhookRepo := webhookPersistence.NewSQLiteEventRepository(db)
 	if err := webhookRepo.Migrate(); err != nil {
@@ -41,25 +41,25 @@ func setupWebhookTestDB(t *testing.T) *sql.DB {
 func setupWebhookRouter(db *sql.DB) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	clienteRepo := clientePersistence.NewSQLiteRepository(db)
+	clientRepo := clientPersistence.NewSQLiteRepository(db)
 	webhookEventRepo := webhookPersistence.NewSQLiteEventRepository(db)
 	pipefyClient := pipefy.NewClient()
 
-	clienteQry := clienteApp.NewObterClientePorEmailHandler(clienteRepo)
-	handler := webhookApp.NewProcessarCardUpdatedHandler(webhookEventRepo, clienteQry, clienteRepo, pipefyClient)
+	clientQry := clientApp.NewGetClientByEmailHandler(clientRepo)
+	handler := webhookApp.NewProcessCardUpdatedHandler(webhookEventRepo, clientQry, clientRepo, pipefyClient)
 	httpHandler := webhookHTTP.NewHandler(handler)
 	r.POST("/webhooks/pipefy/card-updated", httpHandler.CardUpdated)
 	return r
 }
 
-func criarClienteParaTeste(db *sql.DB, nome, email string, patrimonio float64) {
-	repo := clientePersistence.NewSQLiteRepository(db)
-	c := &domain.Cliente{
-		Nome:            nome,
-		Email:           email,
-		TipoSolicitacao: "Atualização cadastral",
-		ValorPatrimonio: patrimonio,
-		Status:          "Aguardando Análise",
+func createClientForTest(db *sql.DB, name, email string, netWorth float64) {
+	repo := clientPersistence.NewSQLiteRepository(db)
+	c := &domain.Client{
+		Name:        name,
+		Email:       email,
+		RequestType: "Atualização cadastral",
+		NetWorth:    netWorth,
+		Status:      "Aguardando Análise",
 	}
 	if err := repo.Create(c); err != nil {
 		panic(err)
@@ -69,7 +69,7 @@ func criarClienteParaTeste(db *sql.DB, nome, email string, patrimonio float64) {
 func TestWebhook_PatrimonioAlto_PrioridadeAlta(t *testing.T) {
 	db := setupWebhookTestDB(t)
 	defer db.Close()
-	criarClienteParaTeste(db, "João Silva", "joao.silva@example.com", 250000)
+	createClientForTest(db, "João Silva", "joao.silva@example.com", 250000)
 
 	router := setupWebhookRouter(db)
 
@@ -102,23 +102,23 @@ func TestWebhook_PatrimonioAlto_PrioridadeAlta(t *testing.T) {
 		t.Fatalf("expected success, got error: %+v", apiResp)
 	}
 
-	clienteRepo := clientePersistence.NewSQLiteRepository(db)
-	c, err := clienteRepo.FindByEmail("joao.silva@example.com")
+	clientRepo := clientPersistence.NewSQLiteRepository(db)
+	c, err := clientRepo.FindByEmail("joao.silva@example.com")
 	if err != nil {
 		t.Fatalf("failed to find client: %v", err)
 	}
 	if c.Status != "Processado" {
 		t.Errorf("expected status 'Processado', got '%s'", c.Status)
 	}
-	if c.Prioridade != "prioridade_alta" {
-		t.Errorf("expected priority 'prioridade_alta', got '%s'", c.Prioridade)
+	if c.Priority != "prioridade_alta" {
+		t.Errorf("expected priority 'prioridade_alta', got '%s'", c.Priority)
 	}
 }
 
 func TestWebhook_PatrimonioBaixo_PrioridadeNormal(t *testing.T) {
 	db := setupWebhookTestDB(t)
 	defer db.Close()
-	criarClienteParaTeste(db, "Maria Souza", "maria.souza@example.com", 50000)
+	createClientForTest(db, "Maria Souza", "maria.souza@example.com", 50000)
 
 	router := setupWebhookRouter(db)
 
@@ -151,20 +151,20 @@ func TestWebhook_PatrimonioBaixo_PrioridadeNormal(t *testing.T) {
 		t.Fatalf("expected success, got error: %+v", apiResp)
 	}
 
-	clienteRepo := clientePersistence.NewSQLiteRepository(db)
-	c, err := clienteRepo.FindByEmail("maria.souza@example.com")
+	clientRepo := clientPersistence.NewSQLiteRepository(db)
+	c, err := clientRepo.FindByEmail("maria.souza@example.com")
 	if err != nil {
 		t.Fatalf("failed to find client: %v", err)
 	}
-	if c.Prioridade != "prioridade_normal" {
-		t.Errorf("expected priority 'prioridade_normal', got '%s'", c.Prioridade)
+	if c.Priority != "prioridade_normal" {
+		t.Errorf("expected priority 'prioridade_normal', got '%s'", c.Priority)
 	}
 }
 
 func TestWebhook_EventoDuplicado_Bloqueado(t *testing.T) {
 	db := setupWebhookTestDB(t)
 	defer db.Close()
-	criarClienteParaTeste(db, "João Silva", "joao.silva@example.com", 300000)
+	createClientForTest(db, "João Silva", "joao.silva@example.com", 300000)
 
 	router := setupWebhookRouter(db)
 
@@ -251,7 +251,7 @@ func TestWebhook_ClienteNaoEncontrado(t *testing.T) {
 func TestWebhook_PatrimonioExatamente200k_PrioridadeAlta(t *testing.T) {
 	db := setupWebhookTestDB(t)
 	defer db.Close()
-	criarClienteParaTeste(db, "Carlos Silva", "carlos.silva@example.com", 200000)
+	createClientForTest(db, "Carlos Silva", "carlos.silva@example.com", 200000)
 
 	router := setupWebhookRouter(db)
 
@@ -284,12 +284,12 @@ func TestWebhook_PatrimonioExatamente200k_PrioridadeAlta(t *testing.T) {
 		t.Fatalf("expected success, got error: %+v", apiResp)
 	}
 
-	clienteRepo := clientePersistence.NewSQLiteRepository(db)
-	c, err := clienteRepo.FindByEmail("carlos.silva@example.com")
+	clientRepo := clientPersistence.NewSQLiteRepository(db)
+	c, err := clientRepo.FindByEmail("carlos.silva@example.com")
 	if err != nil {
 		t.Fatalf("failed to find client: %v", err)
 	}
-	if c.Prioridade != "prioridade_alta" {
-		t.Errorf("expected priority 'prioridade_alta' for patrimonio=200000, got '%s'", c.Prioridade)
+	if c.Priority != "prioridade_alta" {
+		t.Errorf("expected priority 'prioridade_alta' for net worth=200000, got '%s'", c.Priority)
 	}
 }

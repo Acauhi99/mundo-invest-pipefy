@@ -11,42 +11,42 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 
-	clienteApp "github.com/mundoinvest/cliente/application"
-	"github.com/mundoinvest/cliente/domain"
-	clienteHTTP "github.com/mundoinvest/cliente/infrastructure/http"
-	clientePersistence "github.com/mundoinvest/cliente/infrastructure/persistence"
+	clientApp "github.com/mundoinvest/client/application"
+	"github.com/mundoinvest/client/domain"
+	clientHTTP "github.com/mundoinvest/client/infrastructure/http"
+	clientPersistence "github.com/mundoinvest/client/infrastructure/persistence"
 	"github.com/mundoinvest/pipefy"
 	"github.com/mundoinvest/shared"
 )
 
-func setupClienteTestDB(t *testing.T) *sql.DB {
+func setupClientTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("failed to open in-memory database: %v", err)
 	}
-	repo := clientePersistence.NewSQLiteRepository(db)
+	repo := clientPersistence.NewSQLiteRepository(db)
 	if err := repo.Migrate(); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 	return db
 }
 
-func setupClienteRouter(db *sql.DB) *gin.Engine {
+func setupClientRouter(db *sql.DB) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	repo := clientePersistence.NewSQLiteRepository(db)
+	repo := clientPersistence.NewSQLiteRepository(db)
 	pipefyClient := pipefy.NewClient()
-	cmdHandler := clienteApp.NewCriarClienteHandler(repo, pipefyClient)
-	handler := clienteHTTP.NewHandler(cmdHandler)
-	r.POST("/clientes", handler.Criar)
+	cmdHandler := clientApp.NewCreateClientHandler(repo, pipefyClient)
+	handler := clientHTTP.NewHandler(cmdHandler)
+	r.POST("/clientes", handler.Create)
 	return r
 }
 
-func TestCriarCliente_Sucesso(t *testing.T) {
-	db := setupClienteTestDB(t)
+func TestCriarClient_Sucesso(t *testing.T) {
+	db := setupClientTestDB(t)
 	defer db.Close()
-	router := setupClienteRouter(db)
+	router := setupClientRouter(db)
 
 	payload := map[string]interface{}{
 		"cliente_nome":     "João Silva",
@@ -68,7 +68,7 @@ func TestCriarCliente_Sucesso(t *testing.T) {
 
 	var apiResp struct {
 		Success bool             `json:"success"`
-		Data    domain.Cliente   `json:"data"`
+		Data    domain.Client    `json:"data"`
 		Error   *shared.APIError `json:"error"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &apiResp); err != nil {
@@ -79,8 +79,8 @@ func TestCriarCliente_Sucesso(t *testing.T) {
 	}
 	resp := apiResp.Data
 
-	if resp.Nome != "João Silva" {
-		t.Errorf("expected nome 'João Silva', got '%s'", resp.Nome)
+	if resp.Name != "João Silva" {
+		t.Errorf("expected name 'João Silva', got '%s'", resp.Name)
 	}
 	if resp.Email != "joao.silva@example.com" {
 		t.Errorf("expected email 'joao.silva@example.com', got '%s'", resp.Email)
@@ -98,20 +98,20 @@ func TestCriarCliente_Sucesso(t *testing.T) {
 		t.Error("expected card_id set")
 	}
 
-	repo := clientePersistence.NewSQLiteRepository(db)
+	repo := clientPersistence.NewSQLiteRepository(db)
 	saved, err := repo.FindByEmail("joao.silva@example.com")
 	if err != nil {
 		t.Fatalf("failed to find client in database: %v", err)
 	}
-	if saved.Nome != "João Silva" {
+	if saved.Name != "João Silva" {
 		t.Errorf("client was not persisted correctly")
 	}
 }
 
-func TestCriarCliente_EmailInvalido(t *testing.T) {
-	db := setupClienteTestDB(t)
+func TestCriarClient_EmailInvalido(t *testing.T) {
+	db := setupClientTestDB(t)
 	defer db.Close()
-	router := setupClienteRouter(db)
+	router := setupClientRouter(db)
 
 	payload := map[string]interface{}{
 		"cliente_nome":     "João Silva",
@@ -146,10 +146,10 @@ func TestCriarCliente_EmailInvalido(t *testing.T) {
 	}
 }
 
-func TestCriarCliente_CamposObrigatoriosAusentes(t *testing.T) {
-	db := setupClienteTestDB(t)
+func TestCriarClient_CamposObrigatoriosAusentes(t *testing.T) {
+	db := setupClientTestDB(t)
 	defer db.Close()
-	router := setupClienteRouter(db)
+	router := setupClientRouter(db)
 
 	payload := map[string]interface{}{
 		"cliente_nome": "João Silva",
@@ -181,10 +181,10 @@ func TestCriarCliente_CamposObrigatoriosAusentes(t *testing.T) {
 	}
 }
 
-func TestCriarCliente_ValorPatrimonioInvalido(t *testing.T) {
-	db := setupClienteTestDB(t)
+func TestCriarClient_ValorPatrimonioInvalido(t *testing.T) {
+	db := setupClientTestDB(t)
 	defer db.Close()
-	router := setupClienteRouter(db)
+	router := setupClientRouter(db)
 
 	payload := map[string]interface{}{
 		"cliente_nome":     "João Silva",

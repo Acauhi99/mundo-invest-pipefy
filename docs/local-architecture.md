@@ -14,20 +14,20 @@ flowchart TD
         r.POST()"]
     end
 
-    subgraph ClienteContext["Bounded Context: Cliente"]
+    subgraph ClientContext["Bounded Context: Client"]
         direction TB
         subgraph ClienteHTTP["infrastructure/http"]
-            CH["Handler.Criar()"]
+            CH["Handler.Create()"]
         end
         subgraph ClienteApp["application"]
-            CCH["CriarClienteHandler"]
-            OCH["ObterClientePorEmailHandler"]
+            CCH["CreateClientHandler"]
+            OCH["GetClientByEmailHandler"]
         end
         subgraph ClienteDomain["domain"]
-            CL["Cliente aggregate"]
+            CL["Client aggregate"]
             DE["Domain Events:
-            ClienteCriado
-            ClienteProcessado"]
+            ClientCreated
+            ClientProcessed"]
         end
         subgraph ClientePersist["infrastructure/persistence"]
             CR["SQLiteRepository"]
@@ -40,7 +40,7 @@ flowchart TD
             WH["Handler.CardUpdated()"]
         end
         subgraph WebhookApp["application"]
-            PCH["ProcessarCardUpdatedHandler"]
+            PCH["ProcessCardUpdatedHandler"]
         end
         subgraph WebhookDomain["domain"]
             PE["ProcessedEvent
@@ -65,8 +65,8 @@ flowchart TD
     end
 
     subgraph DB["SQLite (mundoinvest.db)"]
-        CT["clientes"]
-        ET["eventos_processados"]
+        CT["clients"]
+        ET["processed_events"]
     end
 
     REQ1 --> ROUTER
@@ -75,26 +75,26 @@ flowchart TD
     ROUTER --> WH
 
     CH -->|"ShouldBindJSON() valida campos obrigatórios + email"| CCH
-    CCH -->|"1. New Cliente{Status: Aguardando Análise}"| CL
+    CCH -->|"1. New Client{Status: Aguardando Análise}"| CL
     CCH -->|"2. repo.Create()"| CR
-    CR -->|"INSERT INTO clientes"| CT
+    CR -->|"INSERT INTO clients"| CT
     CCH -->|"3. buildCreateCardPayload()"| PC
     PC -->|"SimulateSend() retorna card_sim_xxx"| CCH
     CCH -->|"4. repo.UpdateCardID()"| CR
 
     WH -->|"ShouldBindJSON() valida campos"| PCH
     PCH -->|"1. IsEventProcessed(event_id)"| WR
-    WR -->|"SELECT COUNT(*) FROM eventos_processados"| ET
-    PCH -->|"2. ObterClientePorEmail.Handle()"| OCH
+    WR -->|"SELECT COUNT(*) FROM processed_events"| ET
+    PCH -->|"2. GetClientByEmailHandler.Handle()"| OCH
     OCH -->|"repo.FindByEmail()"| CR
-    CR -->|"SELECT FROM clientes WHERE email=?"| CT
+    CR -->|"SELECT FROM clients WHERE email=?"| CT
     PCH -->|"3. Regra: >=200k → prioridade_alta"| PCH
-    PCH -->|"4. UpdateStatusAndPriority('Processado', prioridade)"| CR
-    CR -->|"UPDATE clientes SET status=?, prioridade=?"| CT
+    PCH -->|"4. UpdateStatusAndPriority('Processado', priority)"| CR
+    CR -->|"UPDATE clients SET status=?, priority=?"| CT
     PCH -->|"5. buildUpdateCardFieldPayload()"| PC
     PC -->|"SimulateSend() loga card_id"| PCH
     PCH -->|"6. MarkEventProcessed(event_id)"| WR
-    WR -->|"INSERT INTO eventos_processados"| ET
+    WR -->|"INSERT INTO processed_events"| ET
 
     SR -.-> CH
     SR -.-> WH
@@ -111,7 +111,7 @@ flowchart TD
 
 | Camada | Responsabilidade | Exemplos de Arquivos |
 |--------|-----------------|---------------------|
-| `domain/` | Aggregate root, value objects, domain events, erros de domínio | `cliente.go`, `evento.go`, `errors.go` |
+| `domain/` | Aggregate root, value objects, domain events, erros de domínio | `client.go`, `event.go`, `errors.go` |
 | `application/` | Commands (mutações) + Queries (leituras). Orquestra o fluxo, define ports | `commands.go`, `queries.go` |
 | `infrastructure/http/` | Adapter HTTP — bind JSON, chama command, mapeia HTTP status | `handler.go` |
 | `infrastructure/persistence/` | Adapter de banco — implementa a port definida em application | `repository.go` |
@@ -124,14 +124,14 @@ flowchart TD
 curl POST /clientes
   → Gin Router
     → HTTP Handler: ShouldBindJSON() → valida campos obrigatórios, email, valor>0
-      → CriarClienteHandler.Handle()
-        1. Constrói Cliente{Status: "Aguardando Análise"}
-        2. repo.Create(cliente) → INSERT INTO clientes → retorna ID + created_at
+      → CreateClientHandler.Handle()
+        1. Constrói Client{Status: "Aguardando Análise"}
+        2. repo.Create(client) → INSERT INTO clients → retorna ID + created_at
         3. buildCreateCardPayload() → mutation createCard via pkg/pipefy
         4. pipefy.SimulateSend() → loga "card_sim_xxx" no console
-        5. repo.UpdateCardID(email, cardID) → UPDATE clientes SET card_id=?
-        Retorna Cliente completo com ID, CardID, Status
-      → HTTP Handler: shared.Success(cliente) → 201 Created
+        5. repo.UpdateCardID(email, cardID) → UPDATE clients SET card_id=?
+        Retorna Client completo com ID, CardID, Status
+      → HTTP Handler: shared.Success(client) → 201 Created
 ```
 
 ## Fluxo de Dados — Webhook Card Updated
@@ -140,20 +140,20 @@ curl POST /clientes
 curl POST /webhooks/pipefy/card-updated
   → Gin Router
     → HTTP Handler: ShouldBindJSON() → valida event_id, card_id, email, timestamp
-      → ProcessarCardUpdatedHandler.Handle()
+      → ProcessCardUpdatedHandler.Handle()
         1. eventRepo.IsEventProcessed(event_id)
            → Se já processado → ErrEventAlreadyProcessed → 409 Conflict
-        2. clienteQry.Handle(email) → repo.FindByEmail()
+        2. clientQry.Handle(email) → repo.FindByEmail()
            → Se não encontrado → ErrClientNotFound → 404 Not Found
         3. Regra de prioridade:
            - valor_patrimonio >= 200000 → prioridade_alta
            - valor_patrimonio < 200000  → prioridade_normal
-        4. clienteUpd.UpdateStatusAndPriority("Processado", prioridade)
-           → UPDATE clientes SET status=?, prioridade=?
-        5. buildUpdateCardFieldPayload(cardID, prioridade) → mutations updateCardField
+        4. clientUpd.UpdateStatusAndPriority("Processado", priority)
+           → UPDATE clients SET status=?, priority=?
+        5. buildUpdateCardFieldPayload(cardID, priority) → mutations updateCardField
         6. pipefy.SimulateSend() → loga no console
         7. eventRepo.MarkEventProcessed(event_id)
-           → INSERT INTO eventos_processados
+           → INSERT INTO processed_events
         Retorna nil (sucesso)
       → HTTP Handler: shared.Success({"message": "event processed successfully"}) → 200 OK
 ```

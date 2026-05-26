@@ -10,7 +10,7 @@ go build -buildvcs=false -o bin/server ./cmd/server
 
 # testes (um módulo por vez — go.work não suporta ./... direto da raiz)
 (cd cmd/server      && go test -buildvcs=false -count=1 ./...) || true
-(cd modules/cliente && go test -buildvcs=false -count=1 ./...)
+(cd modules/client && go test -buildvcs=false -count=1 ./...)
 (cd modules/webhook && go test -buildvcs=false -count=1 ./...)
 (cd pkg/pipefy      && go test -buildvcs=false -count=1 ./...) || true
 (cd pkg/shared      && go test -buildvcs=false -count=1 ./...) || true
@@ -19,7 +19,7 @@ go build -buildvcs=false -o bin/server ./cmd/server
 gofmt -w .
 
 # lint (por módulo — go.work não suporta ./... direto da raiz)
-cd modules/cliente && golangci-lint run ./... && cd ../..
+cd modules/client && golangci-lint run ./... && cd ../..
 cd modules/webhook && golangci-lint run ./... && cd ../..
 cd cmd/server && golangci-lint run ./...
 ```
@@ -30,7 +30,7 @@ Go Workspace com 5 módulos independentes (`go.work`):
 
 ```
 cmd/server/         → github.com/mundoinvest/server     (composition root, main)
-modules/cliente/    → github.com/mundoinvest/cliente     (bounded context: Cliente)
+modules/client/    → github.com/mundoinvest/client     (bounded context: Client)
 modules/webhook/    → github.com/mundoinvest/webhook     (bounded context: Webhook)
 pkg/pipefy/         → github.com/mundoinvest/pipefy      (ACL — mutations GraphQL)
 pkg/shared/         → github.com/mundoinvest/shared      (APIResponse, APIError)
@@ -59,15 +59,15 @@ modules/<context>/
 
 ### Nomenclatura
 
-- **Português para domínio:** `Cliente`, `CriarClienteHandler`, `ValorPatrimonio`, `TipoSolicitacao`
+- **Inglês para domínio:** `Client`, `CreateClientHandler`, `ValorPatrimonio`, `TipoSolicitacao`
 - **Inglês para infra/tech:** `Handler`, `Repository`, `PipefyClient`, `APIResponse`
 - **Português para HTTP JSON fields:** `cliente_nome`, `cliente_email`, `valor_patrimonio`
 
 ### Domain Events
 
 Dois eventos existem como structs Go, preparados para evolução futura para mensageria:
-- `ClienteCriado` — emitido ao persistir um novo cliente
-- `ClienteProcessado` — emitido ao atualizar status após webhook
+- `ClientCreated` — emitido ao persistir um novo cliente
+- `ClientProcessed` — emitido ao atualizar status após webhook
 
 Hoje são criados mas não publicados. Um futuro adapter de mensageria (SQS/SNS) consumiria esses structs.
 

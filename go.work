@@ -2,7 +2,7 @@ go 1.26.2
 
 use (
 	./cmd/server
-	./modules/cliente
+	./modules/client
 	./modules/webhook
 	./pkg/pipefy
 	./pkg/shared

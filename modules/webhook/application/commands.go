@@ -1,19 +1,19 @@
 package application
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/mundoinvest/cliente/domain"
+	"github.com/mundoinvest/client/domain"
 	"github.com/mundoinvest/pipefy"
 	webhookDomain "github.com/mundoinvest/webhook/domain"
 )
 
 const (
-	PriorityAlta     = "prioridade_alta"
-	PriorityNormal   = "prioridade_normal"
-	StatusProcessado = "Processado"
+	PriorityHigh    = "prioridade_alta"
+	PriorityNormal  = "prioridade_normal"
+	StatusProcessed = "Processado"
 )
 
 type EventRepository interface {
@@ -22,36 +22,36 @@ type EventRepository interface {
 	Migrate() error
 }
 
-type ClienteQuerier interface {
-	Handle(email string) (*domain.Cliente, error)
+type ClientQuerier interface {
+	Handle(email string) (*domain.Client, error)
 }
 
-type ClienteUpdater interface {
-	UpdateStatusAndPriority(email, status, prioridade string) error
+type ClientUpdater interface {
+	UpdateStatusAndPriority(email, status, priority string) error
 }
 
-type ProcessarCardUpdatedHandler struct {
-	eventRepo  EventRepository
-	clienteQry ClienteQuerier
-	clienteUpd ClienteUpdater
-	pipefy     pipefy.PipefyClient
+type ProcessCardUpdatedHandler struct {
+	eventRepo EventRepository
+	clientQry ClientQuerier
+	clientUpd ClientUpdater
+	pipefy    pipefy.PipefyClient
 }
 
-func NewProcessarCardUpdatedHandler(
+func NewProcessCardUpdatedHandler(
 	eventRepo EventRepository,
-	clienteQry ClienteQuerier,
-	clienteUpd ClienteUpdater,
+	clientQry ClientQuerier,
+	clientUpd ClientUpdater,
 	pc pipefy.PipefyClient,
-) *ProcessarCardUpdatedHandler {
-	return &ProcessarCardUpdatedHandler{
-		eventRepo:  eventRepo,
-		clienteQry: clienteQry,
-		clienteUpd: clienteUpd,
-		pipefy:     pc,
+) *ProcessCardUpdatedHandler {
+	return &ProcessCardUpdatedHandler{
+		eventRepo: eventRepo,
+		clientQry: clientQry,
+		clientUpd: clientUpd,
+		pipefy:    pc,
 	}
 }
 
-func (h *ProcessarCardUpdatedHandler) Handle(input webhookDomain.CardUpdatedInput) error {
+func (h *ProcessCardUpdatedHandler) Handle(input webhookDomain.CardUpdatedInput) error {
 	alreadyProcessed, err := h.eventRepo.IsEventProcessed(input.EventID)
 	if err != nil {
 		return fmt.Errorf("failed to check idempotency: %w", err)
@@ -60,44 +60,51 @@ func (h *ProcessarCardUpdatedHandler) Handle(input webhookDomain.CardUpdatedInpu
 		return fmt.Errorf("event %s: %w", input.EventID, webhookDomain.ErrEventAlreadyProcessed)
 	}
 
-	c, err := h.clienteQry.Handle(input.ClienteEmail)
+	c, err := h.clientQry.Handle(input.ClienteEmail)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, domain.ErrClientNotFound) {
 			return fmt.Errorf("client not found for email %s: %w", input.ClienteEmail, domain.ErrClientNotFound)
 		}
 		return fmt.Errorf("failed to find client: %w", err)
 	}
 
-	prioridade := PriorityNormal
-	if c.ValorPatrimonio >= 200000 {
-		prioridade = PriorityAlta
+	priority := PriorityNormal
+	if c.NetWorth >= 200000 {
+		priority = PriorityHigh
 	}
 
-	if err := h.clienteUpd.UpdateStatusAndPriority(c.Email, StatusProcessado, prioridade); err != nil {
+	if err := h.clientUpd.UpdateStatusAndPriority(c.Email, StatusProcessed, priority); err != nil {
 		return fmt.Errorf("failed to update client: %w", err)
 	}
 
-	pipefyPayload := h.buildUpdateCardFieldPayload(input.CardID, prioridade)
+	pipefyPayload := h.buildUpdateCardFieldPayload(input.CardID, priority)
 	h.pipefy.SimulateSend(pipefyPayload)
 
 	if err := h.eventRepo.MarkEventProcessed(input.EventID); err != nil {
 		return fmt.Errorf("failed to mark event as processed: %w", err)
 	}
 
+	// TODO: publish to event bus (SQS/SNS)
+	_ = domain.ClientProcessed{
+		Email:     input.ClienteEmail,
+		Priority:  priority,
+		Timestamp: time.Now(),
+	}
+
 	return nil
 }
 
-func (h *ProcessarCardUpdatedHandler) buildUpdateCardFieldPayload(cardID, prioridade string) map[string]interface{} {
+func (h *ProcessCardUpdatedHandler) buildUpdateCardFieldPayload(cardID, priority string) map[string]interface{} {
 	payloads := []map[string]interface{}{
 		h.pipefy.BuildUpdateCardFieldPayload(pipefy.UpdateCardFieldInput{
 			CardID:   cardID,
 			FieldID:  "status",
-			NewValue: StatusProcessado,
+			NewValue: StatusProcessed,
 		}),
 		h.pipefy.BuildUpdateCardFieldPayload(pipefy.UpdateCardFieldInput{
 			CardID:   cardID,
 			FieldID:  "prioridade",
-			NewValue: prioridade,
+			NewValue: priority,
 		}),
 	}
 	return map[string]interface{}{

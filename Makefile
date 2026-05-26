@@ -5,14 +5,14 @@ build:
 
 test:
 	go test -buildvcs=false -count=1 \
-		github.com/mundoinvest/cliente/... \
+		github.com/mundoinvest/client/... \
 		github.com/mundoinvest/webhook/... \
 		github.com/mundoinvest/pipefy/... \
 		github.com/mundoinvest/shared/...
 	(cd cmd/server && go test -buildvcs=false -count=1 ./...) || true
 
 lint:
-	cd modules/cliente && golangci-lint run ./... && cd ../..
+	cd modules/client && golangci-lint run ./... && cd ../..
 	cd modules/webhook && golangci-lint run ./... && cd ../..
 	cd cmd/server && golangci-lint run ./...
 

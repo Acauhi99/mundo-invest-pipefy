@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY go.work go.work.sum ./
 COPY cmd/server/go.mod cmd/server/go.sum* ./cmd/server/
-COPY modules/cliente/go.mod modules/cliente/go.sum* ./modules/cliente/
+COPY modules/client/go.mod modules/client/go.sum* ./modules/client/
 COPY modules/webhook/go.mod modules/webhook/go.sum* ./modules/webhook/
 COPY pkg/shared/go.mod pkg/shared/go.sum* ./pkg/shared/
 COPY pkg/pipefy/go.mod pkg/pipefy/go.sum* ./pkg/pipefy/

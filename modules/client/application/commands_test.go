@@ -4,19 +4,19 @@ import (
 	"errors"
 	"testing"
 
-	clienteApp "github.com/mundoinvest/cliente/application"
-	"github.com/mundoinvest/cliente/domain"
+	clientApp "github.com/mundoinvest/client/application"
+	"github.com/mundoinvest/client/domain"
 	"github.com/mundoinvest/pipefy"
 )
 
 type mockRepository struct {
-	createFn       func(c *domain.Cliente) error
+	createFn       func(c *domain.Client) error
 	updateCardIDFn func(email, cardID string) error
 }
 
-func (m *mockRepository) Create(c *domain.Cliente) error                                 { return m.createFn(c) }
-func (m *mockRepository) FindByEmail(email string) (*domain.Cliente, error)              { return nil, nil }
-func (m *mockRepository) UpdateStatusAndPriority(email, status, prioridade string) error { return nil }
+func (m *mockRepository) Create(c *domain.Client) error                                { return m.createFn(c) }
+func (m *mockRepository) FindByEmail(email string) (*domain.Client, error)             { return nil, nil }
+func (m *mockRepository) UpdateStatusAndPriority(email, status, priority string) error { return nil }
 func (m *mockRepository) UpdateCardID(email, cardID string) error {
 	return m.updateCardIDFn(email, cardID)
 }
@@ -39,7 +39,7 @@ func (m *mockPipefy) BuildUpdateCardFieldPayload(input pipefy.UpdateCardFieldInp
 
 func TestCriar_Success(t *testing.T) {
 	repo := &mockRepository{
-		createFn: func(c *domain.Cliente) error {
+		createFn: func(c *domain.Client) error {
 			c.ID = 1
 			return nil
 		},
@@ -52,12 +52,12 @@ func TestCriar_Success(t *testing.T) {
 		},
 	}
 
-	handler := clienteApp.NewCriarClienteHandler(repo, pipefyMock)
-	input := clienteApp.CriarClienteInput{
-		Nome:            "João Silva",
-		Email:           "joao@example.com",
-		TipoSolicitacao: "Atualização cadastral",
-		ValorPatrimonio: 250000,
+	handler := clientApp.NewCreateClientHandler(repo, pipefyMock)
+	input := clientApp.CreateClientInput{
+		Name:        "João Silva",
+		Email:       "joao@example.com",
+		RequestType: "Atualização cadastral",
+		NetWorth:    250000,
 	}
 
 	c, err := handler.Handle(input)
@@ -80,7 +80,7 @@ func TestCriar_Success(t *testing.T) {
 
 func TestCriar_RepoError(t *testing.T) {
 	repo := &mockRepository{
-		createFn: func(c *domain.Cliente) error {
+		createFn: func(c *domain.Client) error {
 			return errors.New("db error")
 		},
 		updateCardIDFn: func(email, cardID string) error { return nil },
@@ -92,12 +92,12 @@ func TestCriar_RepoError(t *testing.T) {
 		},
 	}
 
-	handler := clienteApp.NewCriarClienteHandler(repo, pipefyMock)
-	input := clienteApp.CriarClienteInput{
-		Nome:            "João Silva",
-		Email:           "joao@example.com",
-		TipoSolicitacao: "Atualização cadastral",
-		ValorPatrimonio: 250000,
+	handler := clientApp.NewCreateClientHandler(repo, pipefyMock)
+	input := clientApp.CreateClientInput{
+		Name:        "João Silva",
+		Email:       "joao@example.com",
+		RequestType: "Atualização cadastral",
+		NetWorth:    250000,
 	}
 
 	_, err := handler.Handle(input)
@@ -108,7 +108,7 @@ func TestCriar_RepoError(t *testing.T) {
 
 func TestCriar_UpdateCardIDError(t *testing.T) {
 	repo := &mockRepository{
-		createFn: func(c *domain.Cliente) error {
+		createFn: func(c *domain.Client) error {
 			c.ID = 1
 			return nil
 		},
@@ -123,12 +123,12 @@ func TestCriar_UpdateCardIDError(t *testing.T) {
 		},
 	}
 
-	handler := clienteApp.NewCriarClienteHandler(repo, pipefyMock)
-	input := clienteApp.CriarClienteInput{
-		Nome:            "João Silva",
-		Email:           "joao@example.com",
-		TipoSolicitacao: "Atualização cadastral",
-		ValorPatrimonio: 250000,
+	handler := clientApp.NewCreateClientHandler(repo, pipefyMock)
+	input := clientApp.CreateClientInput{
+		Name:        "João Silva",
+		Email:       "joao@example.com",
+		RequestType: "Atualização cadastral",
+		NetWorth:    250000,
 	}
 
 	_, err := handler.Handle(input)

@@ -22,13 +22,13 @@ mundo-invest-pipefy/
 ├── go.work                          # workspace file
 ├── cmd/server/                      # composition root (entry point)
 ├── modules/
-│   ├── cliente/                     # bounded context: Cliente
+│   ├── client/                       # bounded context: Client
 │   │   ├── domain/                  # aggregate root, domain events, errors
-│   │   ├── application/             # commands (CriarCliente) + queries (ObterClientePorEmail)
+│   │   ├── application/             # commands (CreateClient) + queries (GetClientByEmail)
 │   │   └── infrastructure/          # persistence (SQLite), HTTP handlers
 │   └── webhook/                     # bounded context: Webhook
 │       ├── domain/                  # ProcessedEvent, CardUpdatedInput, errors
-│       ├── application/             # commands (ProcessarCardUpdated)
+│       ├── application/             # commands (ProcessCardUpdated)
 │       └── infrastructure/          # persistence (SQLite), HTTP handlers
 ├── pkg/
 │   ├── shared/                      # shared kernel (APIResponse, APIError)
@@ -44,10 +44,10 @@ mundo-invest-pipefy/
 ```
 
 **Princípios:**
-- **DDD Estratégico:** Bounded contexts `cliente` e `webhook` com modelos de domínio próprios
+- **DDD Estratégico:** Bounded contexts `client` e `webhook` com modelos de domínio próprios
 - **CQRS:** Separação de Commands (mutações) e Queries (leituras) na camada de application
 - **Port/Adapter:** Application define interfaces (ports), infrastructure implementa (adapters)
-- **Domain Events:** `ClienteCriado`, `ClienteProcessado` — preparados para evolução para mensageria (SQS/SNS)
+- **Domain Events:** `ClientCreated`, `ClientProcessed` — preparados para evolução para mensageria (SQS/SNS)
 - **Anti-Corruption Layer:** `pkg/pipefy/` isola as mutations GraphQL do domínio
 
 ## Execução Local
@@ -61,7 +61,8 @@ go build -buildvcs=false -o bin/server ./cmd/server
 # Server started on :8080
 
 # rodar testes
-go test -count=1 ./cmd/server/... ./modules/... ./pkg/...
+go test -count=1 github.com/mundoinvest/client/... github.com/mundoinvest/webhook/... github.com/mundoinvest/pipefy/... github.com/mundoinvest/shared/...
+(cd cmd/server && go test -count=1 ./...) || true
 
 # docker
 make docker-up

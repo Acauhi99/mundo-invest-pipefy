@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite"
 
-	clienteApp "github.com/mundoinvest/cliente/application"
-	clienteHTTP "github.com/mundoinvest/cliente/infrastructure/http"
-	clientePersistence "github.com/mundoinvest/cliente/infrastructure/persistence"
+	clientApp "github.com/mundoinvest/client/application"
+	clientHTTP "github.com/mundoinvest/client/infrastructure/http"
+	clientPersistence "github.com/mundoinvest/client/infrastructure/persistence"
 
 	webhookApp "github.com/mundoinvest/webhook/application"
 	webhookHTTP "github.com/mundoinvest/webhook/infrastructure/http"
@@ -31,24 +31,24 @@ func main() {
 
 	pipefyClient := pipefy.NewClient()
 
-	clienteRepo := clientePersistence.NewSQLiteRepository(db)
+	clientRepo := clientPersistence.NewSQLiteRepository(db)
 	webhookEventRepo := webhookPersistence.NewSQLiteEventRepository(db)
 
-	criarClienteHandler := clienteApp.NewCriarClienteHandler(clienteRepo, pipefyClient)
-	obterClienteHandler := clienteApp.NewObterClientePorEmailHandler(clienteRepo)
+	createClientHandler := clientApp.NewCreateClientHandler(clientRepo, pipefyClient)
+	getClientHandler := clientApp.NewGetClientByEmailHandler(clientRepo)
 
-	processarCardHandler := webhookApp.NewProcessarCardUpdatedHandler(
+	processCardHandler := webhookApp.NewProcessCardUpdatedHandler(
 		webhookEventRepo,
-		obterClienteHandler,
-		clienteRepo,
+		getClientHandler,
+		clientRepo,
 		pipefyClient,
 	)
 
-	clienteHTTPHandler := clienteHTTP.NewHandler(criarClienteHandler)
-	webhookHTTPHandler := webhookHTTP.NewHandler(processarCardHandler)
+	clientHTTPHandler := clientHTTP.NewHandler(createClientHandler)
+	webhookHTTPHandler := webhookHTTP.NewHandler(processCardHandler)
 
 	r := gin.Default()
-	r.POST("/clientes", clienteHTTPHandler.Criar)
+	r.POST("/clientes", clientHTTPHandler.Create)
 	r.POST("/webhooks/pipefy/card-updated", webhookHTTPHandler.CardUpdated)
 
 	log.Println("server started on :8080")
@@ -58,8 +58,8 @@ func main() {
 }
 
 func runMigrations(db *sql.DB) error {
-	clienteRepo := clientePersistence.NewSQLiteRepository(db)
-	if err := clienteRepo.Migrate(); err != nil {
+	clientRepo := clientPersistence.NewSQLiteRepository(db)
+	if err := clientRepo.Migrate(); err != nil {
 		return err
 	}
 

@@ -1,12 +1,11 @@
 package application_test
 
 import (
-	"database/sql"
 	"errors"
 	"strings"
 	"testing"
 
-	"github.com/mundoinvest/cliente/domain"
+	"github.com/mundoinvest/client/domain"
 	"github.com/mundoinvest/pipefy"
 	webhookApp "github.com/mundoinvest/webhook/application"
 	webhookDomain "github.com/mundoinvest/webhook/domain"
@@ -25,20 +24,20 @@ func (m *mockEventRepository) MarkEventProcessed(eventID string) error {
 }
 func (m *mockEventRepository) Migrate() error { return nil }
 
-type mockClienteQuerier struct {
-	handleFn func(email string) (*domain.Cliente, error)
+type mockClientQuerier struct {
+	handleFn func(email string) (*domain.Client, error)
 }
 
-func (m *mockClienteQuerier) Handle(email string) (*domain.Cliente, error) {
+func (m *mockClientQuerier) Handle(email string) (*domain.Client, error) {
 	return m.handleFn(email)
 }
 
-type mockClienteUpdater struct {
-	updateFn func(email, status, prioridade string) error
+type mockClientUpdater struct {
+	updateFn func(email, status, priority string) error
 }
 
-func (m *mockClienteUpdater) UpdateStatusAndPriority(email, status, prioridade string) error {
-	return m.updateFn(email, status, prioridade)
+func (m *mockClientUpdater) UpdateStatusAndPriority(email, status, priority string) error {
+	return m.updateFn(email, status, priority)
 }
 
 type mockPipefy struct {
@@ -58,18 +57,18 @@ func (m *mockPipefy) BuildUpdateCardFieldPayload(input pipefy.UpdateCardFieldInp
 
 func TestProcessar_HighPriority(t *testing.T) {
 	var updatedStatus, updatedPriority string
-	clienteUpdater := &mockClienteUpdater{
-		updateFn: func(email, status, prioridade string) error {
+	clientUpdater := &mockClientUpdater{
+		updateFn: func(email, status, priority string) error {
 			updatedStatus = status
-			updatedPriority = prioridade
+			updatedPriority = priority
 			return nil
 		},
 	}
-	clienteQuerier := &mockClienteQuerier{
-		handleFn: func(email string) (*domain.Cliente, error) {
-			return &domain.Cliente{
-				Email:           "joao@example.com",
-				ValorPatrimonio: 250000,
+	clientQuerier := &mockClientQuerier{
+		handleFn: func(email string) (*domain.Client, error) {
+			return &domain.Client{
+				Email:    "joao@example.com",
+				NetWorth: 250000,
 			}, nil
 		},
 	}
@@ -84,7 +83,7 @@ func TestProcessar_HighPriority(t *testing.T) {
 		},
 	}
 
-	handler := webhookApp.NewProcessarCardUpdatedHandler(eventRepo, clienteQuerier, clienteUpdater, pipefyMock)
+	handler := webhookApp.NewProcessCardUpdatedHandler(eventRepo, clientQuerier, clientUpdater, pipefyMock)
 	err := handler.Handle(webhookDomain.CardUpdatedInput{
 		EventID:      "evt_001",
 		CardID:       "card_001",
@@ -105,17 +104,17 @@ func TestProcessar_HighPriority(t *testing.T) {
 
 func TestProcessar_NormalPriority(t *testing.T) {
 	var updatedPriority string
-	clienteUpdater := &mockClienteUpdater{
-		updateFn: func(email, status, prioridade string) error {
-			updatedPriority = prioridade
+	clientUpdater := &mockClientUpdater{
+		updateFn: func(email, status, priority string) error {
+			updatedPriority = priority
 			return nil
 		},
 	}
-	clienteQuerier := &mockClienteQuerier{
-		handleFn: func(email string) (*domain.Cliente, error) {
-			return &domain.Cliente{
-				Email:           "maria@example.com",
-				ValorPatrimonio: 50000,
+	clientQuerier := &mockClientQuerier{
+		handleFn: func(email string) (*domain.Client, error) {
+			return &domain.Client{
+				Email:    "maria@example.com",
+				NetWorth: 50000,
 			}, nil
 		},
 	}
@@ -130,7 +129,7 @@ func TestProcessar_NormalPriority(t *testing.T) {
 		},
 	}
 
-	handler := webhookApp.NewProcessarCardUpdatedHandler(eventRepo, clienteQuerier, clienteUpdater, pipefyMock)
+	handler := webhookApp.NewProcessCardUpdatedHandler(eventRepo, clientQuerier, clientUpdater, pipefyMock)
 	err := handler.Handle(webhookDomain.CardUpdatedInput{
 		EventID:      "evt_002",
 		CardID:       "card_002",
@@ -150,11 +149,11 @@ func TestProcessar_AlreadyProcessed(t *testing.T) {
 	eventRepo := &mockEventRepository{
 		isProcessedFn: func(eventID string) (bool, error) { return true, nil },
 	}
-	clienteQuerier := &mockClienteQuerier{}
-	clienteUpdater := &mockClienteUpdater{}
+	clientQuerier := &mockClientQuerier{}
+	clientUpdater := &mockClientUpdater{}
 	pipefyMock := &mockPipefy{}
 
-	handler := webhookApp.NewProcessarCardUpdatedHandler(eventRepo, clienteQuerier, clienteUpdater, pipefyMock)
+	handler := webhookApp.NewProcessCardUpdatedHandler(eventRepo, clientQuerier, clientUpdater, pipefyMock)
 	err := handler.Handle(webhookDomain.CardUpdatedInput{
 		EventID:      "evt_dup",
 		CardID:       "card_001",
@@ -174,15 +173,15 @@ func TestProcessar_ClientNotFound(t *testing.T) {
 	eventRepo := &mockEventRepository{
 		isProcessedFn: func(eventID string) (bool, error) { return false, nil },
 	}
-	clienteQuerier := &mockClienteQuerier{
-		handleFn: func(email string) (*domain.Cliente, error) {
-			return nil, sql.ErrNoRows
+	clientQuerier := &mockClientQuerier{
+		handleFn: func(email string) (*domain.Client, error) {
+			return nil, domain.ErrClientNotFound
 		},
 	}
-	clienteUpdater := &mockClienteUpdater{}
+	clientUpdater := &mockClientUpdater{}
 	pipefyMock := &mockPipefy{}
 
-	handler := webhookApp.NewProcessarCardUpdatedHandler(eventRepo, clienteQuerier, clienteUpdater, pipefyMock)
+	handler := webhookApp.NewProcessCardUpdatedHandler(eventRepo, clientQuerier, clientUpdater, pipefyMock)
 	err := handler.Handle(webhookDomain.CardUpdatedInput{
 		EventID:      "evt_004",
 		CardID:       "card_001",
@@ -203,13 +202,13 @@ func TestProcessar_UpdateError(t *testing.T) {
 		isProcessedFn:   func(eventID string) (bool, error) { return false, nil },
 		markProcessedFn: func(eventID string) error { return nil },
 	}
-	clienteQuerier := &mockClienteQuerier{
-		handleFn: func(email string) (*domain.Cliente, error) {
-			return &domain.Cliente{Email: email, ValorPatrimonio: 300000}, nil
+	clientQuerier := &mockClientQuerier{
+		handleFn: func(email string) (*domain.Client, error) {
+			return &domain.Client{Email: email, NetWorth: 300000}, nil
 		},
 	}
-	clienteUpdater := &mockClienteUpdater{
-		updateFn: func(email, status, prioridade string) error {
+	clientUpdater := &mockClientUpdater{
+		updateFn: func(email, status, priority string) error {
 			return errors.New("db write error")
 		},
 	}
@@ -220,7 +219,7 @@ func TestProcessar_UpdateError(t *testing.T) {
 		},
 	}
 
-	handler := webhookApp.NewProcessarCardUpdatedHandler(eventRepo, clienteQuerier, clienteUpdater, pipefyMock)
+	handler := webhookApp.NewProcessCardUpdatedHandler(eventRepo, clientQuerier, clientUpdater, pipefyMock)
 	err := handler.Handle(webhookDomain.CardUpdatedInput{
 		EventID:      "evt_005",
 		CardID:       "card_001",
